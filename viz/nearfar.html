@@ -37,24 +37,24 @@ const AQUA = 0x1baf7a, RED = 0xe34948, OBJ = 0xb07a4a, ROBOT = 0xc4c3bd, EDGE = 
 const canvas = document.getElementById('c'), ui = document.getElementById('ui');
 const R = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
 R.setPixelRatio(Math.min(2, devicePixelRatio)); R.outputEncoding = THREE.sRGBEncoding; R.autoClear = false;
-const scene = new THREE.Scene(); scene.background = new THREE.Color(0xfcfcfb);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xdde1e4);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8a9590, 0.9));
 const sun = new THREE.DirectionalLight(0xffffff, 0.55); sun.position.set(2, 5, 4); scene.add(sun);
 const fill = new THREE.DirectionalLight(0xffffff, 0.2); fill.position.set(-3, 3, -3); scene.add(fill);
 
-const edgeMat = new THREE.LineBasicMaterial({ color: EDGE, transparent: true, opacity: 0.55 });
+const edgeMat = new THREE.LineBasicMaterial({ color: EDGE, transparent: true, opacity: 0.8 });
 function box(w, h, d, x, y, z, color, layer = 0) {
   const g = new THREE.BoxGeometry(w, h, d), m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color }));
   m.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), edgeMat)); m.position.set(x, y, z);
   if (layer) m.traverse(o => o.layers.set(layer)); scene.add(m); return m;
 }
 // floor
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshLambertMaterial({ color: 0xe9e4dc }));
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshLambertMaterial({ color: 0x8c8273 }));
 floor.rotation.x = -Math.PI / 2; scene.add(floor);
 // ---------- robot: the REAL simulation robot (scene 3, single-arm mobile robot) posed at frame 120,
 // gripper open just above the can it is about to pick. Meshes + local poses extracted into sim/simrobot.js.
 const SR = window.SIMROBOT, b64 = (s, T) => { const bin = atob(s), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new T(u.buffer); };
-const mLight = new THREE.MeshStandardMaterial({ color: 0xefeee9, roughness: 0.62, metalness: 0 });
+const mLight = new THREE.MeshStandardMaterial({ color: 0xe4e3dd, roughness: 0.62, metalness: 0 });
 const mDark = new THREE.MeshStandardMaterial({ color: 0x5b6067, roughness: 0.5, metalness: 0.05 });
 const mFinger = new THREE.MeshStandardMaterial({ color: 0x8e949c, roughness: 0.45, metalness: 0.1 });
 const robot = new THREE.Group(); robot.rotation.x = -Math.PI / 2; scene.add(robot);   // MuJoCo z-up -> three y-up, x stays forward
@@ -88,7 +88,7 @@ for (const z of [-0.045, 0.045]) { const l = new THREE.Mesh(new THREE.CylinderGe
 // task + objects, each on its own small stand. The can (the task) sits under the open gripper; the unexpected NEAR box stands
 // beside it, inside the arm's path. The unexpected FAR object = the near box + its stand scaled about the robot camera
 // (exact homothety), so the two look identical from the camera. Each object appears together with its own stand.
-const NEAR_TOP = 0.83, S = 0.1, NB = 0.93, PW = 0.03, POST = 0x9a9a95;   // NB: bottom of the near box · PW: stand width
+const NEAR_TOP = 0.83, S = 0.1, NB = 0.93, PW = 0.03, POST = 0x6c7177;   // NB: bottom of the near box · PW: stand width
 const KF = 1.5;                                                       // homothety factor near → far (keeps the visible far stand above the floor)
 const CAN = new THREE.Vector3(0.58, NEAR_TOP + 0.06, 0);
 const can = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.12, 32), new THREE.MeshStandardMaterial({ color: 0xe0a92e, roughness: 0.45 }));
@@ -174,12 +174,12 @@ if (V === 'static') {
   function draw() {
     const W = innerWidth, H = innerHeight; R.setSize(W, H, false);
     const top = H * 0.2, gap = H * 0.03, lw = W * 0.36, lh = (H - top - gap * 2) / 2, rx = lw + W * 0.03, rw = W - rx - W * 0.015, rh = H - top - gap;
-    R.setScissorTest(true); R.setClearColor(0xfcfcfb); R.setViewport(0, 0, W, H); R.setScissor(0, 0, W, H); R.clear();
+    R.setScissorTest(true); R.setClearColor(0xdde1e4); R.setViewport(0, 0, W, H); R.setScissor(0, 0, W, H); R.clear();
     const view = (x, y, w, h, camera, near, far, z = true) => {
       nearBox.visible = near; farBox.visible = far; zoneMesh.visible = hitMesh.visible = ray.visible = z;
       camera.aspect = w / h; camera.updateProjectionMatrix();
       R.setViewport(x, H - y - h, w, h); R.setScissor(x, H - y - h, w, h);
-      scene.background = new THREE.Color(0xeeeeea); R.clear(); R.render(scene, camera); scene.background = new THREE.Color(0xfcfcfb);
+      scene.background = new THREE.Color(0xd4d9dc); R.clear(); R.render(scene, camera); scene.background = new THREE.Color(0xdde1e4);
     };
     view(0, top, lw, lh, rcam, true, false, false);
     view(0, top + lh + gap, lw, lh, rcam, false, true, false);
@@ -211,14 +211,14 @@ if (V === 'static') {
   const p = new THREE.Vector3(), tg = new THREE.Vector3();
   const hitAqua = cells(hit, AQUA, 0.3);                                  // the near box's cells when it is not there
   for (const b of [nearBox, farBox]) { b.material.transparent = true; b.children[0].material = edgeMat.clone(); b.children[0].material.transparent = true; }
-  const alpha = (b, a) => { b.traverse(o => { if (o.material) { o.material.transparent = true; o.material.opacity = (o.isLineSegments ? 0.55 : 1) * a; } }); b.visible = a > 0.02; };
+  const alpha = (b, a) => { b.traverse(o => { if (o.material) { o.material.transparent = true; o.material.opacity = (o.isLineSegments ? 0.8 : 1) * a; } }); b.visible = a > 0.02; };
   const t0 = performance.now();
   addEventListener('message', e => { if (e.data === 'restart') location.reload(); });
   (function loop() {
     requestAnimationFrame(loop);
     const T = FIXED !== null ? FIXED : window.__CLOCK != null ? window.__CLOCK % LOOP : ((performance.now() - t0) / 1000) % LOOP;
     const W = innerWidth, H = innerHeight; R.setSize(W, H, false);
-    R.setScissorTest(false); R.setViewport(0, 0, W, H); R.setClearColor(0xfcfcfb);
+    R.setScissorTest(false); R.setViewport(0, 0, W, H); R.setClearColor(0xdde1e4);
     const u = ease((T - 2.5) / 3);                                       // 0 = robot camera, 1 = side view
     const w = 1 - u; p.copy(C).multiplyScalar(w * w).addScaledVector(FLY_CTRL, 2 * w * u).addScaledVector(SIDE_POS, u * u);   // quadratic Bézier
     tg.lerpVectors(LOOK, SIDE_TGT, u);
@@ -244,7 +244,7 @@ if (V === 'static') {
       zoneMesh.visible = hitMesh.visible = hitAqua.visible = ray.visible = false;
       if (A) { alpha(nearBox, 1); alpha(farBox, 0); } else { alpha(nearBox, 0); alpha(farBox, 1); }
       R.setScissorTest(true); R.setViewport(ix, H - iy - ih, iw, ih); R.setScissor(ix, H - iy - ih, iw, ih);
-      R.setClearColor(0xeeeeea); R.clear(); rcam.aspect = iw / ih; rcam.updateProjectionMatrix(); R.render(scene, rcam);
+      R.setClearColor(0xd4d9dc); R.clear(); rcam.aspect = iw / ih; rcam.updateProjectionMatrix(); R.render(scene, rcam);
       R.setScissorTest(false);
       zoneMesh.visible = zv; hitMesh.visible = hv; hitAqua.visible = av; ray.visible = rv; alpha(nearBox, nA); alpha(farBox, fA);
     }
