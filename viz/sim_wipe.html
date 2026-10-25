@@ -1,0 +1,147 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Simulation: realistic → simplified</title>
+<style>
+html,body{margin:0;height:100%;background:#f6f4ef;overflow:hidden;font-family:-apple-system,"Helvetica Neue",sans-serif}
+#v{position:absolute;inset:0}
+#v .row,#v .bar,#v .help,#v .loading{display:none!important}
+#v .stage{position:absolute;inset:0}
+#v canvas,#over{width:100%!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;border:0!important;border-radius:0!important}
+#over{position:absolute;inset:0;pointer-events:none}
+#line{position:absolute;top:0;bottom:0;width:8px;margin-left:-4px;background:linear-gradient(90deg,rgba(191,255,230,0),#e8fff6 50%,rgba(191,255,230,0));box-shadow:0 0 18px 6px #1baf7a,0 0 60px 22px rgba(27,175,122,.45);pointer-events:none}
+.tag{position:absolute;left:2.2%;top:3.5%;font-size:clamp(26px,2.5vw,34px);font-weight:600;color:#fff;background:rgba(11,11,11,.72);border-radius:30px;padding:.3em 1em}
+#tagS{color:#0b0b0b;background:#fff;box-shadow:0 0 0 2px #1baf7a;opacity:0}
+#legend{position:absolute;left:2.2%;top:calc(3.5% + 2.6em);font-size:clamp(26px,2.5vw,34px);font-weight:600;color:#0b0b0b;background:rgba(255,255,255,.85);border-radius:30px;padding:.3em 1em;opacity:0}
+#legend i{display:inline-block;width:.9em;height:.9em;border-radius:3px;background:#1baf7a;vertical-align:-.1em;margin:0 .3em 0 .2em}
+#legend i.g1{opacity:.6}#legend i.g2{opacity:.3}#legend span{color:#52514e}
+</style></head>
+<body><div id="v"></div><canvas id="over"></canvas><div id="line"></div>
+<div class="tag" id="tagT">Simulation (realistic)</div><div class="tag" id="tagS">Simplified view</div>
+<div id="legend"><i class="g1"></i>+1 s <i class="g2"></i>+2 s</div>
+<script src="lib/three.min.js"></script><script src="lib/OrbitControls.js"></script><script src="sim/_lib/replay3d.js"></script>
+<script>
+// The episode is already playing while an aqua scan line wipes the realistic render into the simplified view.
+// Case: scene 3 (original version, before the conveyor redesign), trained ACT policy, seed 92013 (fastest of 45/50 successes):
+// drive to the counter, grab the can, turn, cross the room, place it on the second table's green area.
+// Simplified robot = one box per visual part, like the ms1 pages and viz/patch3d_sim.html (slide 9).
+// ?t=SECONDS freezes the loop at that time; ?phase=textured|simplified shows that version only.
+const q = new URLSearchParams(location.search), FIX = q.has('t') ? +q.get('t') : null, PHASE = q.get('phase');
+const HOLD = 1.5, WIPE = 1.8, START = 5, SPEED = 2.4, END = 33, TAIL = 1.2;                  // seconds
+const LOOP = (END - START) / SPEED + TAIL;
+window.__loopSeconds = LOOP; window.__setT = s => { window.__CLOCK = s; };  // export: freeze at loop time s without reloading
+const OFF = [1.9, -2.5, 2.1];                                                  // camera offset from the robot (x mirrored below), metres                                         // ≈ 12.9 s
+const over = document.getElementById('over'), line = document.getElementById('line');
+const tagT = document.getElementById('tagT'), tagS = document.getElementById('tagS');
+const BG = new THREE.Color(0xf6f4ef).convertSRGBToLinear();
+const isRobot = e => /^(robot0_|gripper0_|mobilebase0_)/.test(e.body);
+const robotCol = rgb => new THREE.Color(...rgb).lerp(new THREE.Color(0xadaca5), 0.85);  // as slide 9, a touch darker under these lights
+
+// Simplified phase: pastel environment with thin outlines; robot = plain boxes (one per visual part).
+function restyleSimple(v, C) {
+  const root = v.scene.children.find(o => o.isGroup && o.children.length >= C.geoms.length);
+  const pick = e => {
+    const n = (e.name || '') + ' ' + (e.body || '');
+    if (/target/.test(n)) return 0xe34948;
+    if (/place_region/.test(n)) return 0x4fbf7a;
+    if (/^floor/.test(e.name)) return 0xd3c9bd;
+    if (/s3_(west|east|north|south)|wall|window|picture/.test(n)) return 0xece7df;
+    if (/leg/.test(n)) return 0xa98f6c;
+    if (/table/.test(n)) return 0xe2bd8a;
+    return 0xc9a77c;                                                   // counter, drawer, props
+  };
+  const edges = new Map(), edgeMat = new THREE.LineBasicMaterial({color: 0x3b3b39, transparent: true, opacity: 0.55});
+  C.geoms.forEach((e, i) => {
+    const g = root.children[i], simple = g.children[1];
+    if (isRobot(e)) {
+      const sz = new THREE.Vector3(), c = new THREE.Vector3(), M = e.t === 7 && C.meshes[e.mesh];
+      if (M) { sz.set(...M.hi).sub(new THREE.Vector3(...M.lo)); c.set(...M.hi).add(new THREE.Vector3(...M.lo)).multiplyScalar(0.5); }
+      else if (simple.geometry) { simple.geometry.computeBoundingBox(); simple.geometry.boundingBox.getSize(sz); simple.geometry.boundingBox.getCenter(c); }
+      else return;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(Math.max(sz.x, 1e-3), Math.max(sz.y, 1e-3), Math.max(sz.z, 1e-3)).translate(c.x, c.y, c.z),
+        new THREE.MeshLambertMaterial({color: robotCol(e.rgba)}));
+      box.userData.simple = true; box.visible = simple.visible; g.remove(simple); g.add(box);
+      return;
+    }
+    const col = pick(e);
+    simple.traverse(m => {
+      if (!m.isMesh) return;
+      m.material = new THREE.MeshLambertMaterial({color: new THREE.Color(col).convertSRGBToLinear(), side: m.material.side});
+      if (!/^floor/.test(e.name)) { if (!edges.has(m.geometry)) edges.set(m.geometry, new THREE.EdgesGeometry(m.geometry, 30)); m.add(new THREE.LineSegments(edges.get(m.geometry), edgeMat)); }
+    });
+  });
+}
+
+Replay3D.loadCase('sim/ms3_e92013.js', 'e92013').then(C => {
+  const v = Replay3D.mount(document.getElementById('v'), {
+    scene: {kind: 'mujoco', data: C, cutaway: ['ceiling', 's3_south', 's3_west']},
+    mode: 'full', t0: START,                                     // Replay3D 'follow' view: the camera tracks the robot
+  });
+  // follow view starts at target + (1.4, -2.2, 2.7) and keeps whatever offset it has; use a closer 3/4 shot from the south-west
+  { const tgt = v.camera.position.clone().sub(new THREE.Vector3(1.4, -2.2, 2.7)); v.camera.position.copy(tgt.add(new THREE.Vector3(-OFF[0], OFF[1], OFF[2]))); }
+  [...document.querySelectorAll('#v .tog button')].filter(b => b.textContent === '相机视野').forEach(b => b.click()); // hide frustum
+  v.scene.traverse(o => { if (o.isMesh && o.material.isMeshBasicMaterial && o.geometry.type === 'SphereGeometry') o.material.visible = false; }); // and the camera dot
+  restyleSimple(v, C);
+  // second renderer on the overlay canvas draws the realistic version live while the line sweeps
+  const R2 = new THREE.WebGLRenderer({canvas: over, antialias: true, preserveDrawingBuffer: true});
+  R2.setPixelRatio(Math.min(2, devicePixelRatio)); R2.outputEncoding = THREE.sRGBEncoding;
+  const simple = () => { v.setMode('simple'); v.scene.background = BG; };
+  const frameAt = t => Math.min(v.times.length - 1, Math.round(t / C.dt));
+  // Future-pose ghosts: the robot's ACTUAL poses 1 s and 2 s later (the case stores poses, not ACT's predicted chunks).
+  const root = v.scene.children.find(o => o.isGroup && o.children.length >= C.geoms.length);
+  const robotParts = [];                                          // [group, simplified box] for visible robot geoms
+  C.geoms.forEach((e, i) => { if (!isRobot(e)) return; const g = root.children[i], b = g.children.find(c => c.userData.simple); if (b) robotParts.push([g, b]); });
+  const AQUA = new THREE.Color(0x1baf7a).convertSRGBToLinear();
+  const ghostSets = [[10, 0.28], [20, 0.13]].map(([ahead, alpha]) => {
+    const mat = new THREE.MeshBasicMaterial({color: AQUA, transparent: true, opacity: alpha, depthWrite: false});
+    const meshes = robotParts.map(([, b]) => { const m = new THREE.Mesh(b.geometry, mat); m.matrixAutoUpdate = false; m.renderOrder = 10; return m; });
+    const grp = new THREE.Group(); meshes.forEach(m => grp.add(m)); grp.visible = false; v.scene.add(grp);
+    return {ahead, alpha, mat, meshes, grp};
+  });
+  const grip = robotParts.findIndex(([g]) => /gripper0_/.test(C.geoms[root.children.indexOf(g)].body));
+  const gripCtr = new THREE.Vector3(); if (grip >= 0) { const bb = robotParts[grip][1].geometry; bb.computeBoundingBox(); bb.boundingBox.getCenter(gripCtr); }
+  const trailMat = new THREE.LineDashedMaterial({color: AQUA, dashSize: 0.04, gapSize: 0.035, transparent: true, depthWrite: false});
+  const trail = new THREE.Line(new THREE.BufferGeometry(), trailMat); trail.renderOrder = 11; trail.visible = false; v.scene.add(trail);
+  function poseGhosts(k, kEnd) {                                  // pose the ghosts from frames k+10 / k+20, then restore frame k
+    const pts = [];
+    for (let d = 2; d <= 20; d += 2) {
+      const kk = Math.min(kEnd, k + d); v.show(kk); root.updateMatrixWorld(true);
+      if (grip >= 0) pts.push(gripCtr.clone().applyMatrix4(robotParts[grip][0].matrixWorld));
+      ghostSets.forEach(G => { if (G.ahead === d) robotParts.forEach(([g], j) => G.meshes[j].matrix.copy(g.matrixWorld)); });
+    }
+    v.show(k); root.updateMatrixWorld(true);
+    if (pts.length) { trail.geometry.setFromPoints(pts); trail.computeLineDistances(); }
+  }
+  let last = -1, t0 = null, frames = 0;                           // clock starts on the first real frame
+  addEventListener('message', e => { if (e.data === 'restart') t0 = null; });   // deck restarts the loop when the slide is shown
+  simple();
+  function tick() {
+    if (t0 === null) t0 = performance.now();
+    const T = FIX !== null ? FIX % LOOP : window.__CLOCK != null ? window.__CLOCK % LOOP : ((performance.now() - t0) / 1000) % LOOP;
+    let w = PHASE === 'textured' ? 0 : PHASE === 'simplified' ? 1 : Math.max(0, Math.min(1, (T - HOLD) / WIPE));   // realistic view plays HOLD s, then the line sweeps
+    w = w * w * (3 - 2 * w);                                      // fraction of the width already simplified
+    const k = frameAt(Math.min(END, START + T * SPEED)); if (k !== last) { v.show(k); poseGhosts(k, frameAt(END)); last = k; }
+    const gf = PHASE === 'textured' ? 0 : PHASE === 'simplified' ? 1 : Math.max(0, Math.min(1, (T - HOLD - WIPE) / 0.5));   // ghosts fade in after the wipe
+    ghostSets.forEach(G => { G.mat.opacity = G.alpha * gf; G.grp.visible = gf > 0; }); trailMat.opacity = 0.9 * gf; trail.visible = gf > 0;
+    document.getElementById('legend').style.opacity = gf;
+    if (w < 1) {                                                  // realistic layer, live
+      const W = over.clientWidth, H = over.clientHeight;
+      if (over.width !== Math.round(W * R2.getPixelRatio())) R2.setSize(W, H, false);
+      v.camera.aspect = W / H; v.camera.updateProjectionMatrix();
+      ghostSets.forEach(G => G.grp.visible = false); trail.visible = false;   // no ghosts on the realistic layer
+      v.setMode('full'); R2.render(v.scene, v.camera); simple();
+      ghostSets.forEach(G => G.grp.visible = gf > 0); trail.visible = gf > 0;
+    }
+    over.style.clipPath = `inset(0 0 0 ${w * 100}%)`; over.style.visibility = w < 1 ? 'visible' : 'hidden';
+    line.style.left = `${w * 100}%`; line.style.opacity = w > 0 && w < 1 ? 1 : 0;
+    tagT.style.opacity = w < 0.5 ? 1 : 0; tagS.style.opacity = w >= 0.5 ? 1 : 0;
+    if (++frames === 4) window.__vizReady = true;                 // a few frames so textures and both canvases are drawn
+    requestAnimationFrame(tick);
+  }
+  // Warm-up: let textures load, then upload everything to both renderers once, so the first visible frames don't hitch.
+  setTimeout(() => {
+    const W = over.clientWidth, H = over.clientHeight; R2.setSize(W, H, false);
+    v.show(frameAt(START)); v.setMode('full'); R2.compile(v.scene, v.camera); R2.render(v.scene, v.camera);
+    simple(); v.renderer && v.renderer.compile && v.renderer.compile(v.scene, v.camera);
+    requestAnimationFrame(() => requestAnimationFrame(tick));
+  }, 1500);
+});
+</script></body></html>

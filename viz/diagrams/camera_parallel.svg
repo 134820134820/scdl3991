@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 300" width="520" height="300" font-family="-apple-system,'Helvetica Neue',Arial,sans-serif">
+<rect width="520" height="300" fill="#fcfcfb"/>
+<text x="20" y="32" font-size="28" font-weight="700" fill="#0b0b0b">Before</text>
+<text x="500" y="32" font-size="30" font-weight="700" fill="#eb6834" text-anchor="end">7–13 fps</text>
+<rect x="20" y="46" width="42" height="34" rx="5" fill="#2a78d6"/>
+<rect x="64" y="46" width="42" height="34" rx="5" fill="#8a8984"/>
+<rect x="130" y="46" width="42" height="34" rx="5" fill="#2a78d6"/>
+<rect x="174" y="46" width="42" height="34" rx="5" fill="#8a8984"/>
+<rect x="240" y="46" width="42" height="34" rx="5" fill="#2a78d6"/>
+<rect x="284" y="46" width="42" height="34" rx="5" fill="#8a8984"/>
+<rect x="350" y="46" width="42" height="34" rx="5" fill="#2a78d6"/>
+<rect x="394" y="46" width="42" height="34" rx="5" fill="#8a8984"/>
+<text x="20" y="142" font-size="28" font-weight="700" fill="#0b0b0b">After</text>
+<text x="500" y="142" font-size="30" font-weight="700" fill="#2a78d6" text-anchor="end">30 fps</text>
+<rect x="20" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="64" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="108" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="152" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="196" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="240" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="284" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="328" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="372" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="416" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="460" y="156" width="40" height="30" rx="5" fill="#2a78d6"/>
+<rect x="42" y="192" width="40" height="30" rx="5" fill="#8a8984"/>
+<rect x="86" y="192" width="40" height="30" rx="5" fill="#8a8984"/>
+<rect x="130" y="192" width="40" height="30" rx="5" fill="#8a8984"/>
+<rect x="174" y="192" width="40" height="30" rx="5" fill="#8a8984"/>
+<rect x="218" y="192" width="40" height="30" rx="5" fill="#8a8984"/>
+<rect x="262" y="192" width="40" height="30" rx="5" fill="#8a8984"/>
+<rect x="306" y="192" width="40" height="30" rx="5" fill="#8a8984"/>
+<rect x="350" y="192" width="40" height="30" rx="5" fill="#8a8984"/>
+<rect x="394" y="192" width="40" height="30" rx="5" fill="#8a8984"/>
+<rect x="438" y="192" width="40" height="30" rx="5" fill="#8a8984"/>
+<rect x="20" y="44" width="480" height="38" fill="#fcfcfb" opacity="0.75"><animate attributeName="x" dur="5s" repeatCount="indefinite" keyTimes="0;0.75;1" values="20;500;500" /><animate attributeName="width" dur="5s" repeatCount="indefinite" keyTimes="0;0.75;1" values="480;0;0" /></rect>
+<rect x="20" y="154" width="480" height="70" fill="#fcfcfb" opacity="0.75"><animate attributeName="x" dur="5s" repeatCount="indefinite" keyTimes="0;0.75;1" values="20;500;500" /><animate attributeName="width" dur="5s" repeatCount="indefinite" keyTimes="0;0.75;1" values="480;0;0" /></rect>
+<line y1="40" y2="228" stroke="#0b0b0b" stroke-width="2"><animate attributeName="x1" dur="5s" repeatCount="indefinite" keyTimes="0;0.75;1" values="20;500;500" /><animate attributeName="x2" dur="5s" repeatCount="indefinite" keyTimes="0;0.75;1" values="20;500;500" /><animate attributeName="opacity" dur="5s" repeatCount="indefinite" keyTimes="0;0.75;0.8;1" values="1;1;0;0" /></line>
+<rect x="120" y="258" width="24" height="24" rx="4" fill="#2a78d6"/><text x="152" y="280" font-size="26" fill="#52514e">capture</text>
+<rect x="290" y="258" width="24" height="24" rx="4" fill="#8a8984"/><text x="322" y="280" font-size="26" fill="#52514e">send</text></svg>

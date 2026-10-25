@@ -1,0 +1,159 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Patch3D on our simulation data</title>
+<style>
+html,body{margin:0;height:100%;background:#fcfcfb;font-family:-apple-system,"Helvetica Neue",sans-serif;overflow:hidden}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.cap{position:absolute;left:3.2%;top:4.5%;max-width:62%;font-size:clamp(28px,3.2vw,42px);font-weight:650;color:#0b0b0b;line-height:1.2}
+.cap small{display:none}
+.badge{position:absolute;padding:.25em .8em;border-radius:40px;font-weight:700;font-size:clamp(26px,2.8vw,36px);white-space:nowrap;transform:translate(-50%,-130%);pointer-events:none;display:none}
+.alarm{background:#e34948;color:#fff;box-shadow:0 6px 18px rgba(227,73,72,.35)}
+.quiet{background:#fff;color:#1a7a5e;border:2px solid #1baf7a}
+.inset{position:absolute;right:2.5%;top:4%;width:30%;aspect-ratio:16/9;border-radius:12px;background:transparent;box-shadow:0 8px 24px rgba(15,27,45,.16);border:4px solid #fff;display:none}
+.inset span{position:absolute;left:8px;top:6px;font-size:clamp(26px,2.3vw,30px);font-weight:600;background:rgba(255,255,255,.9);padding:1px 8px;border-radius:20px;color:#52514e}
+</style></head>
+<body>
+<canvas id="c"></canvas>
+<div class="cap" id="cap"></div>
+<div class="badge alarm" id="alarm">ALARM</div>
+<div class="badge quiet" id="quiet">no alarm</div>
+<div class="inset" id="inset"><span>Camera (2D)</span></div>
+<script src="lib/three.min.js"></script>
+<script src="sim/case_alarm.js"></script>
+<script src="sim/pair.js"></script>
+<script>
+// Patch3D principle on REAL data from our main simulation experiment (scene ms1), block-model style.
+// Default: dev case C4_late_084028 (milk carton appears in the robot's path; first confirmed alarm 9.2 s, contact 10.43 s).
+// ?mode=pair: test pair depth_085008 (sponge inside vs outside the path, same camera ray).
+// ?t=SECONDS freezes the loop (for posters).
+const q = new URLSearchParams(location.search), PAIRMODE = q.get('mode') === 'pair', FIXED = q.has('t') ? +q.get('t') : null;
+window.__setT = s => { window.__CLOCK = s; };  // export: freeze at loop time s without reloading
+const AQUA = 0x1baf7a, RED = 0xe34948, OBJ = 0x5b5a55;
+const canvas = document.getElementById('c');
+const R = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+R.setPixelRatio(Math.min(2, devicePixelRatio)); R.outputEncoding = THREE.sRGBEncoding; R.autoClear = false;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xfcfcfb);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a9590, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.55); sun.position.set(3, -4, 6); scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.2); fill.position.set(-4, 3, 4); scene.add(fill);
+const cam = new THREE.PerspectiveCamera(40, 16 / 9, 0.03, 60); cam.up.set(0, 0, 1);
+const rcam = new THREE.PerspectiveCamera(74.45, 16 / 9, 0.03, 60); // robot head camera (inset)
+const G2 = new THREE.BoxGeometry(2, 2, 2), M3 = R9 => new THREE.Matrix4().set(R9[0], R9[1], R9[2], 0, R9[3], R9[4], R9[5], 0, R9[6], R9[7], R9[8], 0, 0, 0, 0, 1);
+const isRoom = b => (Math.max(...b.h) > 1.0 && b.c[2] > 0.2) || (b.c[2] > 1.2 && Math.min(...b.h) < 0.05);  // walls, ceiling, wall pictures: hidden (cut-away)
+function box(b, color) {
+  const m = new THREE.Mesh(G2, new THREE.MeshLambertMaterial({ color }));
+  m.scale.set(...b.h); m.setRotationFromMatrix(M3(b.R)); m.position.set(...b.c); return m;
+}
+const robotCol = rgb => new THREE.Color(...rgb).lerp(new THREE.Color(0xc4c3bd), 0.85);
+// only the outer layer of a cell set (a cell with a missing neighbour): reads as a clean translucent volume
+function shell(list) {
+  const S = new Set(list.map(c => c.join())), N = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  return list.filter(c => N.some(d => !S.has([c[0]+d[0], c[1]+d[1], c[2]+d[2]].join())));
+}
+function cells(list, color, opacity, scale = 1) {
+  const k = 0.05 * scale, im = new THREE.InstancedMesh(new THREE.BoxGeometry(k, k, k),
+    new THREE.MeshLambertMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 }), Math.max(1, list.length));
+  const M = new THREE.Matrix4(); list.forEach((c, i) => { M.makeTranslation(c[0] * 0.05, c[1] * 0.05, c[2] * 0.05); im.setMatrixAt(i, M); });
+  im.count = list.length; return im;
+}
+const $ = id => document.getElementById(id), cap = $('cap');
+const setCap = (a, b) => { const h = `${a}<small>${b}</small>`; if (cap.innerHTML !== h) cap.innerHTML = h; };
+function badge(el, on, p) {
+  el.style.display = on ? 'block' : 'none'; if (!on) return;
+  const v = p.clone().project(cam); el.style.left = (v.x + 1) / 2 * innerWidth + 'px'; el.style.top = (1 - v.y) / 2 * innerHeight + 'px';
+}
+let draw, overlay = [];
+
+if (!PAIRMODE) {
+  // ---------------- default: drive + path zone + object appears → alarm ----------------
+  const C = window.CASE, F = C.frames;
+  for (const b of C.static) if (!isRoom(b)) scene.add(box(b, new THREE.Color(...b.rgb)));
+  const parts = C.robot_parts.map(p => { const m = new THREE.Mesh(G2, new THREE.MeshLambertMaterial({ color: robotCol(p.rgb) })); m.scale.set(...p.h); scene.add(m); return m; });
+  const zones = C.regions_H2.map(r => { const m = cells(shell(r), AQUA, 0.1, 0.9); m.visible = false; scene.add(m); return m; });
+  const probe = new THREE.Group(); scene.add(probe);
+  let hot = null;
+  // loop: 1.5 s hold → play 6.4–11.8 s at 0.5× (10.8 s) → 2.5 s hold
+  const T0 = F[0].t, T1 = F[F.length - 1].t, HOLD0 = 1.5, SLOW = 0.5, PLAY = (T1 - T0) / SLOW, LOOP = HOLD0 + PLAY + 2.5;
+  window.__loopSeconds = LOOP;
+  cam.position.set(1.05, -1.25, 2.35); const look = new THREE.Vector3(-0.75, 0.8, 0.75); cam.lookAt(look);
+  let shown = -1;
+  draw = t => {
+    const u = ((t % LOOP) + LOOP) % LOOP, st = T0 + Math.max(0, Math.min(PLAY, u - HOLD0)) * SLOW;
+    let i = 0; while (i < F.length - 1 && F[i + 1].t <= st + 1e-6) i++;
+    const f = F[i];
+    if (i !== shown) {
+      shown = i;
+      f.robot.forEach((v, j) => { parts[j].position.set(...v.c); parts[j].setRotationFromMatrix(M3(v.R)); });
+      zones.forEach((z, k) => { z.visible = k === f.region_H2; });
+      probe.clear(); f.probe.forEach(b => probe.add(box(b, OBJ)));
+      if (hot) scene.remove(hot); hot = null;
+      const c = f.combos.M1_H2;  // alarm rule: a connected cluster of unexpected cells ≥ N (=12) inside the 2 s path
+      if (c.over_threshold && f.cl_M1.length) { hot = cells(f.cl_M1, RED, 1, 0.96); scene.add(hot); }
+    }
+    const c = f.combos.M1_H2, P = f.probe[0] ? new THREE.Vector3(...f.probe[0].c) : null;
+    badge($('alarm'), c.confirmed && P, P || new THREE.Vector3());
+    if (c.confirmed) setCap(`In the path → alarm, ${(C.contact - C.alarm.M1_H2.first_confirmed_s).toFixed(1)} s early`, '');
+    else if (f.probe.length) setCap('An object appears', '');
+    else setCap('Watch only the arm\'s path', '');
+  };
+} else {
+  // ---------------- pair: same object inside vs outside the path, same camera ray ----------------
+  const P = window.PAIR, look = new THREE.Vector3(...P.in_c).add(new THREE.Vector3(...P.out_c)).multiplyScalar(0.5);
+  const objIn = [], objOut = [];
+  for (const b of P.boxes) {
+    if (b.k === 'static' && isRoom(b)) continue;
+    const col = b.k === 'robot' ? robotCol(b.rgb) : b.k === 'static' ? new THREE.Color(...b.rgb) : new THREE.Color(OBJ);
+    const m = box(b, col); scene.add(m); if (b.k === 'in') objIn.push(m); if (b.k === 'out') objOut.push(m);
+  }
+  // path cells occupied by the inside object (cell centre within the object's box, 1 cell margin) → red
+  const inside = [], free = [], inv = P.boxes.filter(b => b.k === 'in').map(b => ({ c: new THREE.Vector3(...b.c), Rt: M3(b.R).transpose(), h: b.h }));
+  const v = new THREE.Vector3();
+  for (const c of P.cells) {
+    const hit = inv.some(o => { v.set(c[0] * 0.05, c[1] * 0.05, c[2] * 0.05).sub(o.c).applyMatrix4(o.Rt); return Math.abs(v.x) <= o.h[0] + 0.05 && Math.abs(v.y) <= o.h[1] + 0.05 && Math.abs(v.z) <= o.h[2] + 0.05; });
+    (hit ? inside : free).push(c);
+  }
+  const zoneAll = cells(shell(P.cells), AQUA, 0.1, 0.9), zoneFree = cells(shell(free), AQUA, 0.1, 0.9), red = cells(inside, RED, 1, 0.96);
+  scene.add(zoneAll, zoneFree, red); overlay = [zoneAll, zoneFree, red];
+  // dashed camera ray through both positions
+  const cp = new THREE.Vector3(...P.cam.pos), dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 12), new THREE.MeshBasicMaterial({ color: 0x222222 }));
+  dot.position.copy(cp);  // not added: it sits above the frame and collides with the caption
+  const far = new THREE.Vector3(...P.out_c).sub(cp).multiplyScalar(1.25).add(cp);
+  const ray = new THREE.Line(new THREE.BufferGeometry().setFromPoints([cp, far]), new THREE.LineDashedMaterial({ color: 0x52514e, dashSize: 0.05, gapSize: 0.04 }));
+  ray.computeLineDistances(); scene.add(ray); overlay.push(ray, dot);
+  // robot camera for the inset
+  const Rm = P.cam.mat; rcam.position.copy(cp);
+  rcam.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(Rm[0], Rm[3], Rm[6]), new THREE.Vector3(Rm[1], Rm[4], Rm[7]), new THREE.Vector3(Rm[2], Rm[5], Rm[8])));
+  rcam.fov = P.cam.fovy; rcam.updateProjectionMatrix();
+  $('inset').style.display = 'block';
+  // side view, perpendicular to the camera ray so "in front of / behind" is visible
+  const dir = look.clone().sub(cp); dir.z = 0; dir.normalize(); const side = new THREE.Vector3(dir.y, -dir.x, 0);
+  cam.position.copy(look).addScaledVector(side, 2.9).addScaledVector(dir, -0.35).add(new THREE.Vector3(0, 0, 1.2)); cam.lookAt(look.clone().addScaledVector(dir, -0.25).add(new THREE.Vector3(0, 0, -0.15)));
+  const LOOP = 7;  // 3.5 s inside, 3.5 s outside
+  window.__loopSeconds = LOOP;
+  draw = t => {
+    const inPhase = (((t % LOOP) + LOOP) % LOOP) < LOOP / 2;
+    objIn.forEach(m => m.visible = inPhase); objOut.forEach(m => m.visible = !inPhase);
+    red.visible = inPhase; zoneFree.visible = inPhase; zoneAll.visible = !inPhase;
+    badge($('alarm'), inPhase, new THREE.Vector3(...P.in_c));
+    badge($('quiet'), !inPhase, new THREE.Vector3(...P.out_c));
+    setCap(inPhase ? 'Inside the path → alarm' : 'Outside the path → no alarm', '');
+  };
+}
+
+function size() { R.setSize(innerWidth, innerHeight, false); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
+addEventListener('resize', size); size();
+let t0 = performance.now();
+addEventListener('message', e => { if (e.data === 'restart') t0 = performance.now(); });  // deck restarts the loop when the slide is shown
+(function loop() {
+  requestAnimationFrame(loop);
+  draw(FIXED !== null ? FIXED : window.__CLOCK != null ? window.__CLOCK : (performance.now() - t0) / 1000);
+  R.setViewport(0, 0, innerWidth, innerHeight); R.setScissorTest(false); R.clear(); R.render(scene, cam);
+  if (PAIRMODE) { // inset viewport, top-right (matches .inset box)
+    const r = $('inset').getBoundingClientRect(), b = 4, x = r.left + b, w = r.width - 2 * b, h = r.height - 2 * b, y = innerHeight - r.bottom + b;
+    R.setScissorTest(true); R.setScissor(x, y, w, h); R.setViewport(x, y, w, h);
+    const vis = overlay.map(o => o.visible); overlay.forEach(o => o.visible = false);
+    const bg = scene.background; scene.background = new THREE.Color(0xeeeeea); R.clear(); R.render(scene, rcam); scene.background = bg;
+    overlay.forEach((o, k) => o.visible = vis[k]);
+  }
+  window.__vizReady = true;
+})();
+</script></body></html>

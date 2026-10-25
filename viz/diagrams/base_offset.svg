@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 300" width="520" height="300" font-family="-apple-system,'Helvetica Neue',Arial,sans-serif">
+<rect width="520" height="300" fill="#fcfcfb"/>
+<line x1="260" y1="15" x2="260" y2="255" stroke="#e4e3de" stroke-width="2"/>
+<text x="130" y="30" font-size="28" font-weight="700" fill="#eb6834" text-anchor="middle">Before</text>
+<text x="390" y="30" font-size="28" font-weight="700" fill="#2a78d6" text-anchor="middle">After</text>
+<rect x="40" y="48" width="180" height="62" rx="6" fill="#e4e3de"/>
+<circle cx="120" cy="78" r="12" fill="#e34948"/>
+<rect x="92" y="160" width="56" height="56" rx="10" fill="none" stroke="#8a8984" stroke-width="2.5" stroke-dasharray="6 5"/>
+<line x1="144" y1="182" x2="144" y2="182" stroke="#eb6834" stroke-width="9" stroke-linecap="round"><animate attributeName="x2" dur="6s" repeatCount="indefinite" keyTimes="0;0.35;0.6;1" values="144;144;144;144" /><animate attributeName="y2" dur="6s" repeatCount="indefinite" keyTimes="0;0.35;0.6;1" values="182;182;88;88" /><animate attributeName="opacity" dur="6s" repeatCount="indefinite" keyTimes="0;0.3;0.35;1" values="0;0;1;1" /></line>
+<rect x="92" y="160" width="56" height="56" rx="10" fill="#52514e"><animate attributeName="x" dur="6s" repeatCount="indefinite" keyTimes="0;0.1;0.3;1" values="92;92;116;116"/><animate attributeName="y" dur="6s" repeatCount="indefinite" keyTimes="0;0.1;0.3;1" values="160;160;170;170"/></rect>
+<g opacity="0" stroke="#eb6834" stroke-width="5" stroke-linecap="round"><animate attributeName="opacity" dur="6s" repeatCount="indefinite" keyTimes="0;0.6;0.66;1" values="0;0;1;1" /><line x1="152" y1="80" x2="166" y2="66"/><line x1="152" y1="66" x2="166" y2="80"/></g>
+
+<rect x="300" y="48" width="180" height="62" rx="6" fill="#e4e3de"/>
+<circle cx="380" cy="78" r="12" fill="#e34948"/>
+<rect x="352" y="160" width="56" height="56" rx="10" fill="none" stroke="#8a8984" stroke-width="2.5" stroke-dasharray="6 5"/>
+<line x1="404" y1="182" x2="404" y2="182" stroke="#2a78d6" stroke-width="9" stroke-linecap="round"><animate attributeName="x2" dur="6s" repeatCount="indefinite" keyTimes="0;0.35;0.6;1" values="404;404;380;380" /><animate attributeName="y2" dur="6s" repeatCount="indefinite" keyTimes="0;0.35;0.6;1" values="182;182;78;78" /><animate attributeName="opacity" dur="6s" repeatCount="indefinite" keyTimes="0;0.3;0.35;1" values="0;0;1;1" /></line>
+<rect x="352" y="160" width="56" height="56" rx="10" fill="#52514e"><animate attributeName="x" dur="6s" repeatCount="indefinite" keyTimes="0;0.1;0.3;1" values="352;352;376;376"/><animate attributeName="y" dur="6s" repeatCount="indefinite" keyTimes="0;0.1;0.3;1" values="160;160;170;170"/></rect>
+<g opacity="0"><animate attributeName="opacity" dur="6s" repeatCount="indefinite" keyTimes="0;0.6;0.66;1" values="0;0;1;1" /><circle cx="380" cy="78" r="20" fill="none" stroke="#1baf7a" stroke-width="4"/></g>
+
+<text x="260" y="288" font-size="30" font-weight="700" fill="#0b0b0b" text-anchor="middle">7.1 mm → 1.9 mm</text></svg>

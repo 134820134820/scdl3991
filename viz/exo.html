@@ -1,0 +1,188 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Exoskeleton → robot</title>
+<style>
+html,body{margin:0;height:100%;background:#fcfcfb;font-family:-apple-system,"Helvetica Neue",sans-serif;overflow:hidden}
+.pane{position:absolute;top:0;bottom:0}
+.cap{position:absolute;left:3%;top:4%;max-width:60%;font-size:clamp(26px,3vw,40px);font-weight:650;color:#0b0b0b;z-index:2}
+.cap small{display:none}
+.ptitle{position:absolute;bottom:4%;left:0;right:0;text-align:center;font-size:clamp(26px,2.2vw,32px);color:#52514e;z-index:2}
+.split .pane + .pane{border-left:1px solid #e4e3de}
+</style></head>
+<body>
+<div class="cap">The robot copies the operator's arms</div>
+<script src="lib/three.min.js"></script><script src="lib/OrbitControls.js"></script><script src="lib/STLLoader.js"></script><script src="common.js"></script>
+<script>
+// Operator wearing the exoskeleton + the robot (block model from the real URDF).
+// Both arms use the robot's joint axes, so the same 7 angles pose both — that is the mapping.
+// ?layout=beside (default): solid operator beside the robot, dashed links between matching points.
+// ?layout=ghost: robot in front, semi-transparent operator behind it.
+// ?layout=split: left = solid operator beside the robot (with dashed links), right = ghost layout.
+// ?cuff=band (default) | none : padded straps on the arm, or no straps.   ?t=SECONDS freezes the motion.
+const q = new URLSearchParams(location.search);
+const LAYOUT = ['split', 'ghost'].includes(q.get('layout')) ? q.get('layout') : 'beside', CUFF = q.get('cuff') === 'none' ? 'none' : 'band';
+const YAW = 0.55;
+const AX = { // URDF joint axes, z-up frame, facing +x
+  left: [[0,1,0],[1,0,0],[0,0,1],[0,-1,0],[0,0,1],[-1,0,0],[0,-1,0]],
+  right: [[0,1,0],[-1,0,0],[0,0,1],[0,-1,0],[0,0,1],[-1,0,0],[0,-1,0]],
+};
+
+// ---------- operator + exoskeleton ----------
+function buildOperator(ghost) {
+  const mat = (color, extra = {}) => ghost
+    ? new THREE.MeshStandardMaterial({ color, roughness: 0.8, transparent: true, opacity: 0.4, depthWrite: false, ...extra })
+    : clay(color, extra);
+  const skin = mat(ghost ? 0x8fb3dd : 0xe9e4da), exo = mat(ghost ? 0x3d5f8c : 0x3b3f46, { roughness: 0.45 }), pad = mat(ghost ? 0x5b7aa6 : 0x5a6170, { roughness: 0.9 });
+  const sh = m => { m.castShadow = !ghost; return m; };
+  const capsule = (r, len, m) => { // along -z from origin
+    const g = new THREE.Group();
+    const c = sh(new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 24), m)); c.rotation.x = Math.PI / 2; c.position.z = -len / 2;
+    const a = sh(new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), m)), b = a.clone(); b.position.z = -len;
+    g.add(c, a, b); return g;
+  };
+  const ell = (rx, ry, rz, m) => { const e = sh(new THREE.Mesh(new THREE.SphereGeometry(1, 40, 28), m)); e.scale.set(rx, ry, rz); return e; };
+  const box = (w, d, h, m) => sh(new THREE.Mesh(new THREE.BoxGeometry(w, d, h), m));
+  const cyl = (r, h, m, axis) => { // cylinder along a local axis ('x' | 'y' | 'z')
+    const c = sh(new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 24), m));
+    if (axis === 'x') c.rotation.z = Math.PI / 2; if (axis === 'z') c.rotation.x = Math.PI / 2; return c;
+  };
+
+  const wrap = new THREE.Group(); wrap.scale.setScalar(0.86);
+  const human = new THREE.Group(); human.rotation.x = -Math.PI / 2; wrap.add(human);
+  const torso = ell(0.12, 0.19, 0.27, skin); torso.position.z = 1.2; human.add(torso);
+  for (const y of [-0.17, 0.17]) { const s = ell(0.07, 0.07, 0.07, skin); s.position.set(0, y, 1.36); human.add(s); }
+  const head = ell(0.1, 0.1, 0.115, skin); head.position.z = 1.6; human.add(head);
+  const neck = capsule(0.045, 0.08, skin); neck.position.z = 1.5; human.add(neck);
+  const pelvis = ell(0.11, 0.16, 0.1, skin); pelvis.position.z = 0.9; human.add(pelvis);
+  for (const y of [-0.09, 0.09]) { const leg = capsule(0.065, 0.78, skin); leg.position.set(0, y, 0.84); human.add(leg); }
+  // backpack frame + harness
+  const pack = box(0.07, 0.26, 0.36, exo); pack.position.set(-0.16, 0, 1.2); human.add(pack);
+  const beam = box(0.05, 0.56, 0.05, exo); beam.position.set(-0.15, 0, 1.42); human.add(beam);
+  for (const y of [-0.11, 0.11]) {
+    const strap = box(0.26, 0.045, 0.018, pad); strap.position.set(-0.02, y, 1.43); human.add(strap);
+    const front = box(0.018, 0.045, 0.24, pad); front.position.set(0.115, y, 1.3); human.add(front);
+  }
+  const chest = box(0.018, 0.2, 0.035, pad); chest.position.set(0.122, 0, 1.3); human.add(chest);
+
+  const J = { left: [], right: [] }, P = { left: [], right: [] };
+  for (const side of ['left', 'right']) {
+    const k = side === 'left' ? 1 : -1;
+    // shoulder arm from the beam end to the shoulder housing
+    const sarm = box(0.04, 0.05, 0.03, exo); sarm.position.set(-0.09, 0.27 * k, 1.42); human.add(sarm);
+    let parent = new THREE.Group(); parent.position.set(0, 0.22 * k, 1.36); human.add(parent);
+    const seg = [0, 0, 0.28, 0, 0.25, 0, 0];
+    for (let i = 0; i < 7; i++) {
+      const j = new THREE.Group(); parent.add(j); J[side].push(j);
+      if (i === 0 || i === 3) { // compact joint housings on the outside of shoulder / elbow
+        const h = cyl(0.04, 0.035, exo, 'y'); h.position.y = 0.075 * k; j.add(h); P[side].push(j);
+      }
+      if (i === 5) { const h = cyl(0.026, 0.03, exo, 'y'); h.position.y = 0.06 * k; j.add(h); P[side].push(j); }
+      if (seg[i]) {
+        const r = i === 2 ? 0.05 : 0.042;
+        j.add(capsule(r, seg[i], skin));
+        const rod = box(0.02, 0.016, seg[i] * 0.9, exo); rod.position.set(0, 0.068 * k, -seg[i] / 2); j.add(rod);
+        if (CUFF === 'band') { // padded strap with real width, joined to the rod
+          const band = cyl(r + 0.012, 0.06, pad, 'z'); band.position.z = -seg[i] * 0.55; j.add(band);
+          const clip = box(0.03, 0.02, 0.06, exo); clip.position.set(0, (r + 0.016) * k, -seg[i] * 0.55); j.add(clip);
+        }
+      }
+      const next = new THREE.Group(); next.position.z = -seg[i]; j.add(next); parent = next;
+    }
+    // Hand end: an upright VR-controller-style handle. In this frame +x points up in the calibration pose
+    // (elbow 90°, forearm forward), -z along the forearm. The rod bends in and holds the handle's bottom.
+    const hz = -0.065;
+    const grip = cyl(0.019, 0.13, exo, 'x'); grip.position.set(0.005, 0, hz); parent.add(grip);
+    const top = ell(0.03, 0.034, 0.03, exo); top.position.set(0.075, 0, hz); parent.add(top);
+    const ring = sh(new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.007, 10, 32), exo));
+    ring.position.set(0.085, 0, hz + 0.01); ring.rotation.y = Math.PI / 2 - 0.5; parent.add(ring);
+    const stick = cyl(0.007, 0.018, mat(0x1d2633), 'x'); stick.position.set(0.1, 0, hz); parent.add(stick);
+    const trig = box(0.03, 0.018, 0.022, exo); trig.position.set(0.03, 0, hz - 0.026); parent.add(trig);
+    const fist = ell(0.035, 0.042, 0.042, skin); fist.position.set(0.012, 0, hz + 0.006); parent.add(fist);
+    const down = box(0.06, 0.016, 0.02, exo); down.position.set(-0.035, 0.068 * k, -0.005); parent.add(down);       // rod continues to the wrist
+    const foot = box(0.02, 0.016, 0.075, exo); foot.position.set(-0.068, 0.068 * k, hz / 2); parent.add(foot);
+    const cross = box(0.02, 0.068, 0.02, exo); cross.position.set(-0.068, 0.034 * k, hz); parent.add(cross);   // ...into the handle's base
+    const base = cyl(0.021, 0.02, exo, 'x'); base.position.set(-0.062, 0, hz); parent.add(base);
+    const tip = new THREE.Group(); tip.position.set(0.005, 0, hz); parent.add(tip); P[side].push(tip);
+  }
+  return { wrap, J, P };
+}
+
+// ---------- one 3D view: operator + robot ----------
+const views = [];
+function makeView(el, mode) { // mode 'solid' (side by side, dashed links) | 'ghost' (operator behind the robot)
+  const ghost = mode === 'ghost';
+  const narrow = LAYOUT === 'split', SEP = narrow ? 0.55 : 0.75;
+  const st = makeStage(el, ghost ? { cam: [narrow ? 4.4 : 3.7, 1.15, 0.3], target: [-0.25, 0.74, -0.25], fov: 30, tone: false }
+                                 : { cam: [narrow ? 5.4 : 4.2, 1.3, 0.0], target: [0, 0.76, 0], fov: 30, tone: false });
+  const op = buildOperator(ghost);
+  if (ghost) op.wrap.position.set(-0.5, 0, -0.5); else op.wrap.position.z = -SEP;
+  op.wrap.rotation.y = YAW;
+  st.scene.add(op.wrap);
+  const v = { st, op, R: null, lines: [], ghost };
+  if (!ghost) {
+    const lineMat = new THREE.LineDashedMaterial({ color: VIZ.ours, dashSize: 0.05, gapSize: 0.035 });
+    const dotGeo = new THREE.SphereGeometry(0.018, 16, 12), dotMat = new THREE.MeshBasicMaterial({ color: VIZ.ours });
+    for (let n = 0; n < 8; n++) {
+      const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), lineMat);
+      l.dots = [new THREE.Mesh(dotGeo, dotMat), new THREE.Mesh(dotGeo, dotMat)];
+      st.scene.add(l, ...l.dots); v.lines.push(l);
+    }
+  }
+  v.ready = loadZeno('robot/', { blocks: true }).then(z => {
+    const rw = new THREE.Group(); rw.rotation.y = YAW; rw.add(z.root);
+    if (!ghost) rw.position.z = SEP;
+    st.scene.add(rw); z.joints.torso_Joint_1.set(-0.1); v.R = z;
+    // scale the operator so both shoulders sit at the same height (same overall size as the robot)
+    st.scene.updateMatrixWorld(true);
+    op.wrap.scale.setScalar(z.joints.left_arm_Joint_1.mover.getWorldPosition(new THREE.Vector3()).y / 1.36);
+  });
+  views.push(v);
+  return v;
+}
+
+const panes = [];
+if (LAYOUT === 'split') {
+  document.body.classList.add('split');
+  for (const [i, title] of ['Operator beside the robot', 'Operator driving the robot from behind'].entries()) {
+    const d = document.createElement('div'); d.className = 'pane'; d.style.left = i ? '50%' : '0'; d.style.width = '50%';
+    const t = document.createElement('div'); t.className = 'ptitle'; t.textContent = title; d.appendChild(t);
+    document.body.appendChild(d); panes.push(d);
+  }
+  makeView(panes[0], 'solid'); makeView(panes[1], 'ghost');
+} else {
+  const d = document.createElement('div'); d.className = 'pane'; d.style.left = '0'; d.style.width = '100%'; document.body.appendChild(d);
+  makeView(d, LAYOUT === 'ghost' ? 'ghost' : 'solid');
+}
+Promise.all(views.map(v => v.ready)).then(() => { window.__vizReady = true; });
+
+// ---------- motion (both sides move together) ----------
+const K = [
+  { t: 0,   a0: 0,    a1: 0.1, a2: 0,    a3: 1.5, a4: 0,    a5: 0,    a6: 0 },
+  { t: 2,   a0: -0.9, a1: 0.3, a2: 0.1,  a3: 1.1, a4: 0,    a5: 0.2,  a6: 0 },
+  { t: 4,   a0: -0.6, a1: 0.2, a2: 0.2,  a3: 2.0, a4: 0.6,  a5: 0.4,  a6: 0.4 },
+  { t: 6,   a0: -1.2, a1: 0.5, a2: -0.1, a3: 0.8, a4: -0.4, a5: -0.3, a6: -0.3 },
+  { t: 8,   a0: -0.4, a1: 0.15,a2: 0,    a3: 1.8, a4: 0.2,  a5: 0,    a6: 0.2 },
+  { t: 10,  a0: 0,    a1: 0.1, a2: 0,    a3: 1.5, a4: 0,    a5: 0,    a6: 0 },
+];
+const RPTS = ['Joint_1', 'Joint_4', 'Joint_6', 'Link_7'];
+window.__setT = s => { window.__CLOCK = s; };  // export: freeze at loop time s without reloading
+window.__loopSeconds = K[K.length - 1].t;
+const fixedT = q.has('t') ? +q.get('t') : null, a = new THREE.Vector3(), b = new THREE.Vector3(), ax = new THREE.Vector3();
+for (const v of views) v.st.onFrame(t => {
+  if (fixedT !== null) t = fixedT; else if (window.__CLOCK != null) t = window.__CLOCK;
+  const kf = keyframes(K, t), ang = [kf.a0, kf.a1, kf.a2, kf.a3, kf.a4, kf.a5, kf.a6];
+  let n = 0;
+  for (const side of ['left', 'right']) {
+    const mir = side === 'left' ? 1 : -1; // URDF mirrors the roll axis; mirror the yaw joints
+    const x = ang.map((val, i) => (i === 2 || i === 4) ? val * mir : val);
+    v.op.J[side].forEach((j, i) => j.quaternion.setFromAxisAngle(ax.set(...AX[side][i]), x[i]));
+    if (!v.R) continue;
+    x.forEach((val, i) => v.R.joints[`${side}_arm_Joint_${i + 1}`].set(val));
+    if (!v.lines.length) continue;
+    RPTS.forEach((name, i) => {
+      const robj = name.startsWith('Joint') ? v.R.joints[`${side}_arm_${name}`].mover : v.R.links[`${side}_arm_${name}`];
+      v.op.P[side][i].getWorldPosition(a); robj.getWorldPosition(b);
+      const l = v.lines[n++]; l.geometry.setFromPoints([a, b]); l.computeLineDistances(); l.dots[0].position.copy(a); l.dots[1].position.copy(b);
+    });
+  }
+});
+</script></body></html>

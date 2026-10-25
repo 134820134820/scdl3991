@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 300" width="520" height="300" font-family="-apple-system,'Helvetica Neue',Arial,sans-serif">
+<rect width="520" height="300" fill="#fcfcfb"/>
+<rect x="92" y="110" width="52" height="135" rx="14" fill="#e4e3de"/>
+<path d="M333.2 216.7 A 195 195 0 0 0 287.9 12.1" fill="none" stroke="#eb6834" stroke-width="3" stroke-dasharray="8 7"/>
+<text x="380" y="120" font-size="32" font-weight="700" fill="#eb6834" text-anchor="middle">65°</text>
+<g transform="translate(150,150) rotate(-45)" stroke="#eb6834" stroke-width="18" opacity="0.45"><path d="M0 0 L105 0 L185 25" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M185 25 l14 -10 M185 25 l12 14" fill="none" stroke-linecap="round" stroke-width="7"/></g>
+
+<g transform="translate(150,150) rotate(20)" stroke="#8a8984" stroke-width="18" opacity="0.25"><path d="M0 0 L105 0 L185 25" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M185 25 l14 -10 M185 25 l12 14" fill="none" stroke-linecap="round" stroke-width="7"/></g>
+<g transform="translate(150,150)"><g stroke="#52514e" stroke-width="18"><path d="M0 0 L105 0 L185 25" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M185 25 l14 -10 M185 25 l12 14" fill="none" stroke-linecap="round" stroke-width="7"/><animateTransform attributeName="transform" type="rotate" dur="6s" repeatCount="indefinite" keyTimes="0;0.4;0.85;1" values="20;20;-45;-45" calcMode="spline" keySplines="0 0 1 1;0.45 0 0.55 1;0 0 1 1"/></g></g>
+<circle cx="150" cy="150" r="13" fill="#0b0b0b"/>
+<g><polygon points="484.6,132.2 467.2,149.6 442.8,149.6 425.4,132.2 425.4,107.8 442.8,90.4 467.2,90.4 484.6,107.8" fill="#e34948"/><rect x="437" y="114" width="36" height="12" rx="3" fill="#fff"/><animate attributeName="opacity" dur="6s" repeatCount="indefinite" keyTimes="0;0.4;0.48;1" values="1;1;0;0" /></g>
+<g><circle cx="455" cy="120" r="28" fill="#1baf7a"/><path d="M442 121 l9 9 l17 -19" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><animate attributeName="opacity" dur="6s" repeatCount="indefinite" keyTimes="0;0.85;0.9;1" values="0;0;1;1" /></g>
+<text x="270" y="290" font-size="28" font-weight="700" fill="#eb6834" text-anchor="middle">65° jump → stop<animate attributeName="opacity" dur="6s" repeatCount="indefinite" keyTimes="0;0.4;0.46;1" values="1;1;0;0" /></text>
+<text x="270" y="290" font-size="28" font-weight="700" fill="#2a78d6" text-anchor="middle">move slowly first<animate attributeName="opacity" dur="6s" repeatCount="indefinite" keyTimes="0;0.46;0.52;1" values="0;0;1;1" /></text></svg>

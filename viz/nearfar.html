@@ -1,0 +1,271 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Near vs far: 2D vs 3D</title>
+<style>
+html,body{margin:0;height:100%;background:#fcfcfb;font-family:-apple-system,"Helvetica Neue",sans-serif;overflow:hidden}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.cap{position:absolute;left:4.5%;top:6%;max-width:84%;font-size:clamp(28px,3.2vw,44px);font-weight:650;color:#0b0b0b;line-height:1.2;transition:opacity .35s}
+.cap small{display:none}
+.tag{position:absolute;padding:.25em .8em;border-radius:40px;font-weight:700;font-size:clamp(26px,2.4vw,32px);white-space:nowrap;pointer-events:none;transition:opacity .35s}
+.b2d{background:#eb6834;color:#fff;box-shadow:0 6px 18px rgba(235,104,52,.3)}
+.alarm{background:#e34948;color:#fff;box-shadow:0 6px 18px rgba(227,73,72,.35)}
+.quiet{background:#fff;color:#1a7a5e;border:2px solid #1baf7a}
+.vt{position:absolute;font-size:clamp(26px,2vw,30px);font-weight:650;color:#52514e;background:rgba(255,255,255,.92);padding:3px 12px;border-radius:20px}
+.obj{background:#fff;color:#7a4e26;border:2px solid #b07a4a}
+.task{background:#fff;color:#0b0b0b;border:2px solid #e0a92e}
+.feed{position:absolute;pointer-events:none;box-shadow:inset 0 0 0 3px rgba(11,11,11,.55);border-radius:6px;transition:opacity .35s}
+.feed.full{inset:2.5%;border-radius:14px;box-shadow:inset 0 0 0 4px rgba(11,11,11,.5),inset 0 0 80px rgba(0,0,0,.12)}
+.cam{color:#fff;background:rgba(11,11,11,.7)}
+.corner{right:4%;top:5%;transition:opacity .35s}
+.feed.inset{border-radius:10px;box-shadow:0 0 0 3px #fff,0 10px 30px rgba(0,0,0,.18),inset 0 0 0 2px rgba(11,11,11,.5)}
+.tag.small{font-size:clamp(26px,2vw,30px)}
+#fade{position:absolute;inset:0;background:#fcfcfb;opacity:0;pointer-events:none}
+</style></head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui"></div>
+<div id="fade"></div>
+<script src="lib/three.min.js"></script>
+<script src="sim/simrobot.js"></script>
+<script>
+// Purpose-made demo for slide 10: two boxes look the same from the robot's camera, but one is ON the arm's path (near table)
+// and the other is farther away BEHIND it on the same line of sight (far table). 2D flags both; 3D flags only the near one.
+// ?v=move (default): ~11 s camera move from the robot's camera to a side view.  ?v=static: two camera views + one side view.
+// ?t=SECONDS freezes the animation (posters).
+const q = new URLSearchParams(location.search), V = q.get('v') === 'static' ? 'static' : 'move', FIXED = q.has('t') ? +q.get('t') : null;
+window.__setT = s => { window.__CLOCK = s; };  // export: freeze at loop time s without reloading
+const AQUA = 0x1baf7a, RED = 0xe34948, OBJ = 0xb07a4a, ROBOT = 0xc4c3bd, EDGE = 0x3b3b39;
+const canvas = document.getElementById('c'), ui = document.getElementById('ui');
+const R = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+R.setPixelRatio(Math.min(2, devicePixelRatio)); R.outputEncoding = THREE.sRGBEncoding; R.autoClear = false;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xfcfcfb);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a9590, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.55); sun.position.set(2, 5, 4); scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.2); fill.position.set(-3, 3, -3); scene.add(fill);
+
+const edgeMat = new THREE.LineBasicMaterial({ color: EDGE, transparent: true, opacity: 0.55 });
+function box(w, h, d, x, y, z, color, layer = 0) {
+  const g = new THREE.BoxGeometry(w, h, d), m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color }));
+  m.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), edgeMat)); m.position.set(x, y, z);
+  if (layer) m.traverse(o => o.layers.set(layer)); scene.add(m); return m;
+}
+// floor
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshLambertMaterial({ color: 0xe9e4dc }));
+floor.rotation.x = -Math.PI / 2; scene.add(floor);
+// ---------- robot: the REAL simulation robot (scene 3, single-arm mobile robot) posed at frame 120,
+// gripper open just above the can it is about to pick. Meshes + local poses extracted into sim/simrobot.js.
+const SR = window.SIMROBOT, b64 = (s, T) => { const bin = atob(s), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new T(u.buffer); };
+const mLight = new THREE.MeshStandardMaterial({ color: 0xefeee9, roughness: 0.62, metalness: 0 });
+const mDark = new THREE.MeshStandardMaterial({ color: 0x5b6067, roughness: 0.5, metalness: 0.05 });
+const mFinger = new THREE.MeshStandardMaterial({ color: 0x8e949c, roughness: 0.45, metalness: 0.1 });
+const robot = new THREE.Group(); robot.rotation.x = -Math.PI / 2; scene.add(robot);   // MuJoCo z-up -> three y-up, x stays forward
+const geoCache = {};
+for (const e of SR.geoms) {
+  let geo;
+  if (e.t === 7) {
+    if (!geoCache[e.mesh]) {
+      const M = SR.meshes[e.mesh], qv = b64(M.v, Uint16Array), pos = new Float32Array(qv.length);
+      for (let i = 0; i < qv.length; i++) { const a = i % 3; pos[i] = M.lo[a] + qv[i] / 65535 * (M.hi[a] - M.lo[a]); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setIndex(new THREE.BufferAttribute(b64(M.f, M.big ? Uint32Array : Uint16Array), 1)); g.computeVertexNormals(); geoCache[e.mesh] = g;
+    }
+    geo = geoCache[e.mesh];
+  } else { geo = new THREE.CylinderGeometry(e.size[0], e.size[0], 2 * e.size[1], 32); geo.rotateX(Math.PI / 2); }
+  const lum = (e.rgba[0] + e.rgba[1] + e.rgba[2]) / 3;
+  const mat = /finger/.test(e.body) ? mFinger : lum < 0.45 ? mDark : mLight;
+  const m = new THREE.Mesh(geo, mat); m.position.set(...e.p); m.quaternion.set(e.q[1], e.q[2], e.q[3], e.q[0]);
+  // the arm in front of the camera (links 0–6, columns) is hidden from the robot's own camera; wrist + gripper stay visible
+  if (/robot0_link[0-6]$|support/.test(e.body)) m.layers.set(1);
+  robot.add(m);
+}
+// stereo camera on a slim mast at the back of the robot (the robot's "eyes" in our experiments)
+// camera sits just below the near table top: rays to the near box then rise, so nothing between the near box and the far box can
+// hide the far box (any occluder in front of the near box hides both boxes at the same pixels — see the homothety below)
+const C = new THREE.Vector3(-0.2, 0.8, 0);
+box(0.035, C.y - 0.45, 0.035, C.x - 0.02, (C.y + 0.45) / 2, 0, 0xc9c8c2, 1);
+box(0.07, 0.06, 0.16, C.x - 0.02, C.y, 0, 0x3e4349, 1);
+for (const z of [-0.045, 0.045]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.01, 20), new THREE.MeshLambertMaterial({ color: 0x14181d })); l.rotation.z = Math.PI / 2; l.position.set(C.x + 0.017, C.y, z); l.layers.set(1); scene.add(l); }
+
+// task + objects. Near table: the can (the task) sits under the open gripper; the unexpected NEAR box sits beside it,
+// inside the arm's path. The unexpected FAR box is on a far table behind, on the same camera ray, scaled so both look identical.
+const NEAR_TOP = 0.83, S = 0.1, KF = 2.8;                             // KF: homothety factor near → far
+const CAN = new THREE.Vector3(0.58, NEAR_TOP + 0.06, 0);
+const can = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.12, 32), new THREE.MeshStandardMaterial({ color: 0xe0a92e, roughness: 0.45 }));
+can.position.copy(CAN); scene.add(can);
+can.add(new THREE.LineSegments(new THREE.EdgesGeometry(can.geometry, 40), edgeMat));
+const N = new THREE.Vector3(0.7, NEAR_TOP + S / 2, -0.16);
+// far object = exact homothety of the near object about the robot camera C: every point P_far = C + KF·(P_near − C)
+const hom = P => C.clone().add(P.clone().sub(C).multiplyScalar(KF));
+const d = N.clone().sub(C), t = KF;
+const F = hom(N), SF = S * KF, FAR_TOP = C.y + KF * (NEAR_TOP - C.y);
+function table(cx, cz, top, w, dd, th = 0.04) {
+  box(w, th, dd, cx, top - th / 2, cz, 0xe2bd8a);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(0.04, top - th, 0.04, cx + sx * (w / 2 - 0.05), (top - th) / 2, cz + sz * (dd / 2 - 0.05), 0xa98f6c);
+}
+table(0.6, -0.05, NEAR_TOP, 0.3, 0.6);
+// far table top = homothety of the near table top (so its front edge hides the far box exactly where the near edge hides the near box)
+{ const c = hom(new THREE.Vector3(0.6, 0, -0.05)); table(c.x, c.z, FAR_TOP, 0.3 * KF, 0.6 * KF, 0.04 * KF); }
+const boxMat = new THREE.MeshLambertMaterial({ color: OBJ });         // one shared material: identical shading
+const nearBox = box(S, S, S, N.x, N.y, N.z, OBJ), farBox = box(SF, SF, SF, F.x, F.y, F.z, OBJ);
+nearBox.material = boxMat; farBox.material = boxMat.clone();           // same parameters (separate only so each can fade)
+// large number on the face that points at the robot camera (-x face); scales with the box, so it looks the same size in 2D
+function numberPlane(txt, size) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256; const g = cv.getContext('2d');
+  g.fillStyle = '#2b2118'; g.font = 'bold 200px -apple-system,Helvetica Neue,Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 128, 140);
+  const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(size * 0.8, size * 0.8), new THREE.MeshLambertMaterial({ map: tx, transparent: true, depthWrite: false }));
+  m.rotation.y = -Math.PI / 2; m.position.x = -size / 2 - 0.002 * size / S; return m;
+}
+nearBox.add(numberPlane('1', S)); farBox.add(numberPlane('2', SF));
+
+// the arm's 3D action zone: 5 cm cells in front of the gripper over the near table (outer shell only)
+const K = 0.05, zone = [];
+for (let x = 0.47; x <= 0.83; x += K) for (let y = NEAR_TOP + 0.025; y <= 1.08; y += K) for (let z = -0.24; z <= 0.14; z += K) {
+  if (Math.hypot(x - CAN.x, z - CAN.z) < 0.06 && y < CAN.y + 0.085) continue;            // the can is the task, not an anomaly
+  zone.push([x, y, z]);
+}
+const inBox = (p, c, s) => Math.abs(p[0] - c.x) < s / 2 + K / 2 && Math.abs(p[1] - c.y) < s / 2 + K / 2 && Math.abs(p[2] - c.z) < s / 2 + K / 2;
+const hit = zone.filter(p => inBox(p, N, S)), free = zone.filter(p => !inBox(p, N, S));
+console.assert(hit.length > 0 && zone.every(p => !inBox(p, F, SF)), 'near box must be inside the zone, far box outside');
+function cells(list, color, opacity) {
+  const im = new THREE.InstancedMesh(new THREE.BoxGeometry(K * 0.92, K * 0.92, K * 0.92),
+    new THREE.MeshLambertMaterial({ color, transparent: true, opacity, depthWrite: false }), list.length);
+  const M = new THREE.Matrix4(); list.forEach((p, i) => im.setMatrixAt(i, M.makeTranslation(...p))); scene.add(im); return im;
+}
+const zoneMesh = cells(free, AQUA, 0.3), hitMesh = cells(hit, RED, 0.85);
+// dashed camera ray
+const ray = new THREE.Line(new THREE.BufferGeometry().setFromPoints([C, C.clone().addScaledVector(d, t * 1.15)]),
+  new THREE.LineDashedMaterial({ color: 0x52514e, dashSize: 0.05, gapSize: 0.035 }));
+ray.computeLineDistances(); scene.add(ray);
+
+// cameras
+const LOOK = CAN.clone().add(N).multiplyScalar(0.5).add(new THREE.Vector3(0, 0.05, 0));   // robot camera aims between the can and the near box
+const rcam = new THREE.PerspectiveCamera(36, 16 / 9, 0.02, 40); rcam.position.copy(C); rcam.lookAt(LOOK); rcam.layers.disable(1);
+const SIDE_POS = new THREE.Vector3(1.2, 1.55, 2.7), SIDE_TGT = new THREE.Vector3(1.2, 0.78, -0.35);
+const FLY_CTRL = new THREE.Vector3(-1.9, 2.9, 0.7);                    // fly-out rises behind/above the robot, then swings to the side
+const cam = new THREE.PerspectiveCamera(50, 16 / 9, 0.02, 40); cam.layers.enable(1);
+// numeric check: the 8 corners of both boxes must project to the same robot-camera pixels (1920×1080)
+{ rcam.aspect = 16 / 9; rcam.updateProjectionMatrix(); rcam.updateMatrixWorld(); let md = 0;
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    const a = N.clone().add(new THREE.Vector3(sx, sy, sz).multiplyScalar(S / 2)).project(rcam), b = F.clone().add(new THREE.Vector3(sx, sy, sz).multiplyScalar(SF / 2)).project(rcam);
+    md = Math.max(md, Math.abs(a.x - b.x) * 960, Math.abs(a.y - b.y) * 540); }
+  window.__maxPxDiff = md; console.log('max corner pixel difference (1920x1080):', md.toExponential(2)); }
+
+// overlay helpers
+function el(cls, html) { const e = document.createElement('div'); e.className = cls; e.innerHTML = html; ui.appendChild(e); return e; }
+function place(e, p, camera, vx, vy, vw, vh, dx = 0, dy = -1.25) {   // put a label above a 3D point inside a viewport (CSS px)
+  const v = p.clone().project(camera);
+  e.style.left = `${vx + (v.x + 1) / 2 * vw}px`; e.style.top = `${vy + (1 - v.y) / 2 * vh}px`;
+  e.style.transform = `translate(${-50 + dx * 100}%, ${dy * 100}%)`;
+}
+const show = (e, on) => { e.style.opacity = on ? 1 : 0; };
+const ease = u => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+const above = (c, h) => c.clone().add(new THREE.Vector3(0, h, 0));
+const CANTOP = above(CAN, 0.09), NTOP = above(N, S / 2 + 0.02), FTOP = above(F, SF / 2 + 0.03);
+
+if (V === 'static') {
+  const tA = el('vt cam', '● Camera · 1'), tB = el('vt cam', '● Camera · 2'), tS = el('vt', 'Side view');
+  const bA = el('tag b2d', '2D: anomaly'), bB = el('tag b2d', '2D: anomaly');
+  const uA = el('tag obj', 'Unexpected'), uB = el('tag obj', 'Unexpected');
+  const gA = el('tag task', 'Target'), gS = el('tag task', 'Target');
+  const lN = el('tag alarm', '1 · in the path → alarm'), lF = el('tag quiet', '2 · far away → no alarm');
+  const fr = [el('feed', ''), el('feed', '')];
+  const cap = el('cap', 'Same picture, different distance');
+  function draw() {
+    const W = innerWidth, H = innerHeight; R.setSize(W, H, false);
+    const top = H * 0.2, gap = H * 0.03, lw = W * 0.36, lh = (H - top - gap * 2) / 2, rx = lw + W * 0.03, rw = W - rx - W * 0.015, rh = H - top - gap;
+    R.setScissorTest(true); R.setClearColor(0xfcfcfb); R.setViewport(0, 0, W, H); R.setScissor(0, 0, W, H); R.clear();
+    const view = (x, y, w, h, camera, near, far, z = true) => {
+      nearBox.visible = near; farBox.visible = far; zoneMesh.visible = hitMesh.visible = ray.visible = z;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      R.setViewport(x, H - y - h, w, h); R.setScissor(x, H - y - h, w, h);
+      scene.background = new THREE.Color(0xeeeeea); R.clear(); R.render(scene, camera); scene.background = new THREE.Color(0xfcfcfb);
+    };
+    view(0, top, lw, lh, rcam, true, false, false);
+    view(0, top + lh + gap, lw, lh, rcam, false, true, false);
+    cam.position.copy(SIDE_POS); cam.lookAt(SIDE_TGT); view(rx, top, rw, rh, cam, true, true, true);
+    for (const [e, x, y] of [[tA, 10, top + 10], [tB, 10, top + lh + gap + 10], [tS, rx + 10, top + 10]]) { e.style.left = x + 'px'; e.style.top = y + 'px'; }
+    for (const [e, y] of [[bA, top], [bB, top + lh + gap]]) { e.style.left = (lw - 12) + 'px'; e.style.top = (y + 12) + 'px'; e.style.transform = 'translate(-100%,0)'; }
+    [[fr[0], top], [fr[1], top + lh + gap]].forEach(([e, y]) => Object.assign(e.style, { left: '0px', top: y + 'px', width: lw + 'px', height: lh + 'px' }));
+    rcam.aspect = lw / lh; rcam.updateProjectionMatrix();
+    place(uA, NTOP, rcam, 0, top, lw, lh, 0.15); place(uB, NTOP, rcam, 0, top + lh + gap, lw, lh, 0.15);
+    place(gA, above(CAN, -0.07), rcam, 0, top, lw, lh, 0.1, 0.35);
+    place(gS, above(CAN, -0.06), cam, rx, top, rw, rh, -0.5, 0.5);
+    place(lN, above(N, 0.26), cam, rx, top, rw, rh, 0.1);
+    place(lF, above(F, -SF / 2), cam, rx, top, rw, rh, -0.1, 0.9);
+  }
+  addEventListener('resize', draw); draw(); requestAnimationFrame(() => { draw(); window.__vizReady = true; });
+} else {
+  // timeline (s): 0–2.5 robot camera · 2.5–5.5 fly to the side · 5.5–6 zone in
+  // · 6–9.5 phase A: near box only (alarm) + 2D inset · 9.5–13 phase B: far box only (no alarm) + 2D inset
+  // · 13–14.8 both boxes, summary · 14.8–15.6 fade and restart
+  const LOOP = 15.6; window.__loopSeconds = LOOP;
+  const cap = el('cap', ''), b2 = el('tag b2d', '2D: anomaly');
+  const uN = el('tag obj', 'Unexpected'), gT = el('tag task', 'Target');
+  const lN = el('tag alarm', '1 · in the path → alarm'), lF = el('tag quiet', '2 · far away → no alarm');
+  const feed = el('feed full', ''), rtag = el('vt cam corner', '● Robot camera');
+  const iFrame = el('feed inset', ''), iTag = el('vt cam', ''), iB = el('tag b2d small', '2D: anomaly');
+  iTag.style.display = 'none';  // the inset reads as a camera feed via its frame + '2D: anomaly' badge
+  const fade = document.getElementById('fade');
+  const setCap = (a, b) => { const h = `${a}<small>${b}</small>`; if (cap.innerHTML !== h) cap.innerHTML = h; };
+  const p = new THREE.Vector3(), tg = new THREE.Vector3();
+  const hitAqua = cells(hit, AQUA, 0.3);                                  // the near box's cells when it is not there
+  for (const b of [nearBox, farBox]) { b.material.transparent = true; b.children[0].material = edgeMat.clone(); b.children[0].material.transparent = true; }
+  const alpha = (b, a) => { b.material.opacity = a; b.children[0].material.opacity = 0.55 * a; b.children[1].material.opacity = a; b.visible = a > 0.02; };
+  const t0 = performance.now();
+  addEventListener('message', e => { if (e.data === 'restart') location.reload(); });
+  (function loop() {
+    requestAnimationFrame(loop);
+    const T = FIXED !== null ? FIXED : window.__CLOCK != null ? window.__CLOCK % LOOP : ((performance.now() - t0) / 1000) % LOOP;
+    const W = innerWidth, H = innerHeight; R.setSize(W, H, false);
+    R.setScissorTest(false); R.setViewport(0, 0, W, H); R.setClearColor(0xfcfcfb);
+    const u = ease((T - 2.5) / 3);                                       // 0 = robot camera, 1 = side view
+    const w = 1 - u; p.copy(C).multiplyScalar(w * w).addScaledVector(FLY_CTRL, 2 * w * u).addScaledVector(SIDE_POS, u * u);   // quadratic Bézier
+    tg.lerpVectors(LOOK, SIDE_TGT, u);
+    cam.position.copy(p); cam.fov = 40 + 10 * u; cam.aspect = W / H; cam.updateProjectionMatrix(); cam.lookAt(tg);
+    if (u < 0.08) cam.layers.disable(1); else cam.layers.enable(1);      // look "through" the robot's camera at first
+    // which box is shown: both until 6, near only 6–9.5, far only 9.5–13, both 13+
+    const A = T >= 6 && T < 9.5, B = T >= 9.5 && T < 13;
+    const nA = T < 6 ? 1 : T < 9.5 ? 1 : T < 13 ? 1 - ease((T - 9.5) / 0.5) : ease((T - 13) / 0.5);
+    const fA = T < 6 ? 1 : T < 9.5 ? 1 - ease((T - 6) / 0.4) : T < 13 ? ease((T - 9.6) / 0.5) : 1;
+    alpha(nearBox, nA); alpha(farBox, fA);
+    const z = ease((T - 5.5) / 0.5);
+    zoneMesh.material.opacity = 0.3 * z; zoneMesh.visible = z > 0;
+    hitMesh.material.opacity = 0.85 * z * nA; hitMesh.visible = z > 0 && nA > 0.02;
+    hitAqua.material.opacity = 0.3 * z * (1 - nA); hitAqua.visible = z > 0 && nA < 0.98;
+    ray.visible = u > 0.6;
+    R.clear(); R.render(scene, cam);
+    // 2D inset (robot camera of the current single-box situation), top-right
+    const ins = (A || B) && FIXED !== null ? 1 : A || B ? Math.min(ease((T - (A ? 6 : 9.5)) / 0.4), 1) : 0;
+    const iw = Math.round(W * 0.28), ih = Math.round(iw * 9 / 16), ix = W - iw - Math.round(W * 0.025), iy = Math.round(H * 0.04);
+    if (ins > 0) {
+      const zv = zoneMesh.visible, hv = hitMesh.visible, av = hitAqua.visible, rv = ray.visible;
+      zoneMesh.visible = hitMesh.visible = hitAqua.visible = ray.visible = false;
+      if (A) { alpha(nearBox, 1); alpha(farBox, 0); } else { alpha(nearBox, 0); alpha(farBox, 1); }
+      R.setScissorTest(true); R.setViewport(ix, H - iy - ih, iw, ih); R.setScissor(ix, H - iy - ih, iw, ih);
+      R.setClearColor(0xeeeeea); R.clear(); rcam.aspect = iw / ih; rcam.updateProjectionMatrix(); R.render(scene, rcam);
+      R.setScissorTest(false);
+      zoneMesh.visible = zv; hitMesh.visible = hv; hitAqua.visible = av; ray.visible = rv; alpha(nearBox, nA); alpha(farBox, fA);
+    }
+    Object.assign(iFrame.style, { left: ix + 'px', top: iy + 'px', width: iw + 'px', height: ih + 'px' });
+    Object.assign(iTag.style, { left: ix + 8 + 'px', top: iy + 8 + 'px' });
+    Object.assign(iB.style, { left: ix + iw - 8 + 'px', top: iy + 8 + 'px', transform: 'translate(-100%,0)' });
+    for (const e of [iFrame, iTag, iB]) e.style.opacity = ins;
+    // captions
+    if (T < 2.5) setCap('Robot camera: one object?', '');
+    else if (T < 6) setCap('From the side…', '');
+    else if (A) setCap('Object 1: in the arm\'s path', '');
+    else if (B) setCap('Object 2: far away, behind', '');
+    else setCap('2D: same picture · 3D: only 1 is in the way', '');
+    const camPhase = T < 2.4;
+    show(feed, camPhase); show(rtag, camPhase); show(b2, camPhase); show(uN, camPhase);
+    place(b2, NTOP, cam, 0, 0, W, H, 0, -1.2); place(uN, NTOP, cam, 0, 0, W, H, 0, -2.35);
+    show(gT, camPhase || z > 0.5);
+    if (camPhase) place(gT, CAN, cam, 0, 0, W, H, 0.62, -0.5); else place(gT, above(CAN, -0.06), cam, 0, 0, W, H, -0.5, 0.5);
+    show(lN, z > 0.5 && nA > 0.5); show(lF, z > 0.5 && fA > 0.5 && (B || T >= 13));
+    place(lN, above(N, 0.22), cam, 0, 0, W, H, 0.15);
+    place(lF, above(F, -SF / 2), cam, 0, 0, W, H, -0.1, 0.9);
+    fade.style.opacity = T > 14.8 ? ease((T - 14.8) / 0.8) : T < 0.3 && FIXED === null ? 1 - T / 0.3 : 0;
+    window.__vizReady = true;
+  })();
+}
+</script></body></html>
