@@ -260,9 +260,10 @@ if (V === 'static') {
     else if (A) setCap('Object 1: in the arm\'s path', '');
     else if (B) setCap('Object 2: far away, behind', '');
     else setCap('2D: same picture · 3D: only 1 is in the way', '');
+    cap.style.display = W < 700 ? 'none' : '';                          // small stills tiles: the page caption is enough
     const camPhase = T < 2.4;
     show(feed, camPhase); show(rtag, camPhase); show(b2, camPhase); show(uN, camPhase);
-    place(b2, NTOP, cam, 0, 0, W, H, 0, -1.2); place(uN, NTOP, cam, 0, 0, W, H, 0, -2.35);
+    place(b2, N, cam, 0, 0, W, H, 0.72, -1.15); place(uN, N, cam, 0, 0, W, H, 0.72, 0.15);
     show(gT, camPhase || z > 0.5);
     if (camPhase) place(gT, CAN, cam, 0, 0, W, H, 0.62, -0.5); else place(gT, above(CAN, -0.06), cam, 0, 0, W, H, -0.5, 0.5);
     show(lN, z > 0.5 && nA > 0.5); show(lF, z > 0.5 && fA > 0.5 && (B || T >= 13));
