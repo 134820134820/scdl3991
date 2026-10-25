@@ -594,7 +594,7 @@ const J=document.createElement('div');J.id='jump';J.innerHTML='<h3>Go to slide (
 function menu(on){J.classList.toggle('on',on);J.querySelectorAll('button').forEach(b=>b.classList.toggle('cur',+b.dataset.n===i))}
 J.addEventListener('click',e=>{const b=e.target.closest('button');if(b)show(+b.dataset.n);menu(false)});
 document.getElementById('nav').addEventListener('click',()=>menu(true));
-let typed='';addEventListener('keydown',e=>{if(e.key==='g'||e.key==='G')menu(!J.classList.contains('on'));else if(e.key==='Escape')menu(false);else if(/^[0-9]$/.test(e.key))typed+=e.key;else if(e.key==='Enter'&&typed){show(+typed-1);typed='';menu(false)}else typed=''});
+let typed='';addEventListener('keydown',e=>{if(e.key==='g'||e.key==='G')menu(!J.classList.contains('on'));else if(e.key==='Escape'){if(J.classList.contains('on'))menu(false);else if(parent!==window)parent.postMessage('close-zoom','*')}else if(/^[0-9]$/.test(e.key))typed+=e.key;else if(e.key==='Enter'&&typed){show(+typed-1);typed='';menu(false)}else typed=''});
 addEventListener('hashchange',()=>{const n=+location.hash.slice(1);if(n&&n-1!==i)show(n-1)});
 addEventListener('resize',fit);fit();show(i);
 </script>
