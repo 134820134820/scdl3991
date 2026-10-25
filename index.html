@@ -585,11 +585,12 @@ document.querySelectorAll('.bars').forEach(el=>{
 });
 // 3D/animated views: loaded only on the visible slide; &thumb shows the still poster instead (console previews).
 const THUMB = new URLSearchParams(location.search).has('thumb');
+const CB = Date.now();
 const NEAR = new URLSearchParams(location.search).has('solo') ? 0 : 1; // preload the neighbouring slides' 3D views so they are warm when shown
 function vizFor(slide, on) {
   slide.querySelectorAll('.viz').forEach(f => {
     if (THUMB) { if (f.tagName === 'IFRAME') { const im = document.createElement('img'); im.className = 'viz'; im.src = f.dataset.poster; im.style.cssText = f.style.cssText; f.replaceWith(im); } return; }
-    if (on && !f.src) f.src = f.dataset.src;
+    if (on && !f.src) f.src = f.dataset.src + (f.dataset.src.includes('?') ? '&' : '?') + 'cb=' + CB;   // cb: always load the latest animation page
     if (!on && f.src) f.removeAttribute('src');
   });
 }
