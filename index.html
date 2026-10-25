@@ -69,6 +69,7 @@ img.viz{object-fit:contain;display:block}
 img.diag{width:100%;border-radius:14px;background:#fcfcfb;margin-bottom:14px}
 .fix .from{font-size:40px;font-weight:700;color:var(--ink)}
 .fix .from s{color:var(--ink3);font-weight:500}
+.more{margin-top:34px;display:flex;flex-direction:column;gap:10px;font-size:32px;color:var(--ink2)}.more .mk{font-size:26px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--ours);margin-bottom:4px}.more b{color:var(--ink)}
 .check{display:grid;grid-template-columns:90px 260px 1fr;align-items:center;gap:20px;padding:26px 0;border-bottom:2px solid var(--line)}
 .check .ok{width:64px;height:64px;border-radius:50%;background:var(--good);color:#fff;font-size:40px;display:flex;align-items:center;justify-content:center;font-weight:700}
 .aim{flex:1;display:flex;flex-direction:column}
@@ -190,14 +191,22 @@ body.solo #nav{display:none}
 </section>
 
 <!-- 5 ─────────────────────────────── -->
-<section class="slide" data-title="Real hardware">  <div class="tag">Aim 1 · Build</div>
+<section class="slide" data-title="Real hardware">
+  <div class="tag">Aim 1 · Build</div>
   <h1>Making it run smoothly on real hardware</h1>
   <div class="row" style="gap:36px">
-    <div class="col card fix"><img class="diag" src="viz/diagrams/camera_parallel.svg"><h2>Cameras dropped frames</h2><div class="from"><s>7–13</s> → 30 fps</div><p class="lead">Capture and send now run in parallel.</p></div>
-    <div class="col card fix"><img class="diag" src="viz/diagrams/start_pose.svg"><h2>Safety stop at start-up</h2><div class="from"><s>65°</s> → smooth start</div><p class="lead">Move slowly to the start pose first.</p></div>
-    <div class="col card fix"><img class="diag" src="viz/diagrams/handoff.svg"><h2>Jerky movements</h2><div class="from"><s>jumps</s> → smooth</div><p class="lead">Blend each new plan into the last<span class="cite">[4]</span>.</p></div>
+    <div class="col card fix"><img class="diag" src="viz/diagrams/camera_parallel.svg"><h2>Cameras dropped frames</h2><div class="from"><s>7–13</s> → 30 fps</div></div>
+    <div class="col card fix"><img class="diag" src="viz/diagrams/start_pose.svg"><h2>Safety stop at start-up</h2><div class="from"><s>65°</s> → smooth start</div></div>
+    <div class="col card fix"><img class="diag" src="viz/diagrams/handoff.svg"><h2>Jerky movements</h2><div class="from"><s>jumps</s> → smooth</div></div>
   </div>
-  <p class="lead" style="margin-top:36px">Each problem: <b>find the real cause</b> → fix it → <b>measure again</b>.</p>
+  <div class="more">
+    <div class="mk">More problems we fixed</div>
+    <div><b>Training crashed halfway</b> → fixed the frame timestamps, added a check before training</div>
+    <div><b>Robot barely moved</b> → use all of its planned steps, not just the first</div>
+    <div><b>Wheeled base reacted late</b> → new input that knows when a key is released</div>
+    <div><b>Base distance off by a quarter</b> → fixed one wheel's feedback</div>
+    <div><b>Lost the robot after a reboot</b> → remember past addresses and reconnect</div>
+  </div>
   <button class="qa stills" data-goto="S · Real hardware">▣ Stills</button>
   
 </section>
@@ -208,7 +217,6 @@ body.solo #nav{display:none}
   <div class="row" style="gap:60px">
     <div class="col" style="flex:1.35">
       <video class="media" src="assets/real_task.mp4" poster="assets/real_task_mid.jpg" muted loop playsinline></video>
-      <p class="lead" style="margin-top:18px">Real robot, <b>no human control</b>.</p>
     </div>
     <div class="col">
       <h2 style="font-size:44px">As smooth as a human</h2>
