@@ -85,28 +85,20 @@ box(0.035, C.y - 0.45, 0.035, C.x - 0.02, (C.y + 0.45) / 2, 0, 0xc9c8c2, 2);
 box(0.07, 0.06, 0.16, C.x - 0.02, C.y, 0, 0x3e4349, 2);
 for (const z of [-0.045, 0.045]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.01, 20), new THREE.MeshLambertMaterial({ color: 0x14181d })); l.rotation.z = Math.PI / 2; l.position.set(C.x + 0.017, C.y, z); l.layers.set(2); scene.add(l); }
 
-// task + objects. Near table: the can (the task) sits under the open gripper; the unexpected NEAR box sits beside it,
-// inside the arm's path. The unexpected FAR box is on a far table behind, on the same camera ray, scaled so both look identical.
-const NEAR_TOP = 0.83, S = 0.1, NB = 0.93;                            // NB: bottom of the near box (held at arm height on a thin post)
-const KF = C.y / (C.y - NB);                                        // homothety factor near → far, chosen so the far box rests on the floor
+// task + objects, each on its own small stand. The can (the task) sits under the open gripper; the unexpected NEAR box stands
+// beside it, inside the arm's path. The unexpected FAR object = the near box + its stand scaled about the robot camera
+// (exact homothety), so the two look identical from the camera. Each object appears together with its own stand.
+const NEAR_TOP = 0.83, S = 0.1, NB = 0.93, PW = 0.03, POST = 0x9a9a95;   // NB: bottom of the near box · PW: stand width
+const KF = 1.5;                                                       // homothety factor near → far (keeps the visible far stand above the floor)
 const CAN = new THREE.Vector3(0.58, NEAR_TOP + 0.06, 0);
 const can = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.12, 32), new THREE.MeshStandardMaterial({ color: 0xe0a92e, roughness: 0.45 }));
 can.position.copy(CAN); scene.add(can);
 can.add(new THREE.LineSegments(new THREE.EdgesGeometry(can.geometry, 40), edgeMat));
-const N = new THREE.Vector3(0.68, NB + S / 2, -0.47);               // beside the table, in the arm's path
-// far object = exact homothety of the near object about the robot camera C: every point P_far = C + KF·(P_near − C)
-const hom = P => C.clone().add(P.clone().sub(C).multiplyScalar(KF));
+box(PW * 1.3, NEAR_TOP - 0.012, PW * 1.3, CAN.x, (NEAR_TOP - 0.012) / 2, CAN.z, POST); box(0.1, 0.012, 0.1, CAN.x, NEAR_TOP - 0.006, CAN.z, POST);
+const N = new THREE.Vector3(0.68, NB + S / 2, -0.25);                // right next to the can, in the arm's path
+const hom = P => C.clone().add(P.clone().sub(C).multiplyScalar(KF)); // every point P_far = C + KF·(P_near − C)
 const d = N.clone().sub(C), t = KF;
 const F = hom(N), SF = S * KF;
-function table(cx, cz, top, w, dd, th = 0.04) {
-  box(w, th, dd, cx, top - th / 2, cz, 0xe2bd8a);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(0.04, top - th, 0.04, cx + sx * (w / 2 - 0.05), (top - th) / 2, cz + sz * (dd / 2 - 0.05), 0xa98f6c);
-}
-table(0.6, -0.05, NEAR_TOP, 0.3, 0.6);
-// far table top = homothety of the near table top (so its front edge hides the far box exactly where the near edge hides the near box)
-// thin post under the near box's camera-side edge: it lies entirely in front of the box as seen from the camera, so it never
-// covers the line of sight to the far box (anything behind the near box would). The far box simply rests on the floor.
-box(0.03, NB, 0.03, N.x - S / 2 - 0.016, NB / 2, N.z, 0x9a9a95); box(0.16, 0.012, 0.16, N.x - S / 2 - 0.016, 0.006, N.z, 0x9a9a95);
 const boxMat = new THREE.MeshLambertMaterial({ color: OBJ });         // one shared material: identical shading
 const nearBox = box(S, S, S, N.x, N.y, N.z, OBJ), farBox = box(SF, SF, SF, F.x, F.y, F.z, OBJ);
 nearBox.material = boxMat; farBox.material = boxMat.clone();           // same parameters (separate only so each can fade)
@@ -119,10 +111,16 @@ function numberPlane(txt, size) {
   m.rotation.y = -Math.PI / 2; m.position.x = -size / 2 - 0.002 * size / S; return m;
 }
 nearBox.add(numberPlane('1', S)); farBox.add(numberPlane('2', SF));
+// each box's stand is part of the object (scaled with it), so it appears and disappears together with its box
+function stand(b, size) {
+  const k = size / S, m = new THREE.Mesh(new THREE.BoxGeometry(PW * k, NB * k, PW * k), new THREE.MeshLambertMaterial({ color: POST }));
+  m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), edgeMat.clone())); m.position.y = -size / 2 - NB * k / 2; b.add(m);
+}
+stand(nearBox, S); stand(farBox, SF);
 
 // the arm's 3D action zone: 5 cm cells in front of the gripper over the near table (outer shell only)
 const K = 0.05, zone = [];
-for (let x = 0.47; x <= 0.83; x += K) for (let y = NEAR_TOP + 0.025; y <= 1.13; y += K) for (let z = -0.54; z <= 0.14; z += K) {
+for (let x = 0.47; x <= 0.83; x += K) for (let y = NEAR_TOP + 0.025; y <= 1.13; y += K) for (let z = -0.39; z <= 0.14; z += K) {
   if (Math.hypot(x - CAN.x, z - CAN.z) < 0.06 && y < CAN.y + 0.085) continue;            // the can is the task, not an anomaly
   zone.push([x, y, z]);
 }
@@ -194,7 +192,7 @@ if (V === 'static') {
     place(gA, CAN, rcam, 0, top, lw, lh, 0.75, -0.5);
     place(gS, above(CAN, -0.06), cam, rx, top, rw, rh, -0.5, 0.5);
     place(lN, above(N, 0.26), cam, rx, top, rw, rh, 0.1);
-    place(lF, above(F, -SF / 2), cam, rx, top, rw, rh, -0.1, 0.9);
+    place(lF, F, cam, rx, top, rw, rh, 0.62, -0.5);
   }
   addEventListener('resize', draw); draw(); requestAnimationFrame(() => { draw(); window.__vizReady = true; });
 } else {
@@ -213,7 +211,7 @@ if (V === 'static') {
   const p = new THREE.Vector3(), tg = new THREE.Vector3();
   const hitAqua = cells(hit, AQUA, 0.3);                                  // the near box's cells when it is not there
   for (const b of [nearBox, farBox]) { b.material.transparent = true; b.children[0].material = edgeMat.clone(); b.children[0].material.transparent = true; }
-  const alpha = (b, a) => { b.material.opacity = a; b.children[0].material.opacity = 0.55 * a; b.children[1].material.opacity = a; b.visible = a > 0.02; };
+  const alpha = (b, a) => { b.traverse(o => { if (o.material) { o.material.transparent = true; o.material.opacity = (o.isLineSegments ? 0.55 : 1) * a; } }); b.visible = a > 0.02; };
   const t0 = performance.now();
   addEventListener('message', e => { if (e.data === 'restart') location.reload(); });
   (function loop() {
@@ -268,7 +266,7 @@ if (V === 'static') {
     if (camPhase) place(gT, CAN, cam, 0, 0, W, H, 0.62, -0.5); else place(gT, above(CAN, -0.06), cam, 0, 0, W, H, -0.5, 0.5);
     show(lN, z > 0.5 && nA > 0.5); show(lF, z > 0.5 && fA > 0.5 && (B || T >= 13));
     place(lN, above(N, 0.22), cam, 0, 0, W, H, 0.15);
-    place(lF, above(F, -SF / 2), cam, 0, 0, W, H, -0.1, 0.9);
+    place(lF, F, cam, 0, 0, W, H, 0.62, -0.5);
     fade.style.opacity = T > 14.8 ? ease((T - 14.8) / 0.8) : T < 0.3 && FIXED === null ? 1 - T / 0.3 : 0;
     window.__vizReady = true;
   })();
