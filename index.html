@@ -173,14 +173,14 @@ body.solo #nav{display:none}
 </section>
 
 <!-- 4 ─────────────────────────────── -->
-<section class="slide" data-title="Pipeline">  <div class="tag">Aim 1 · Build</div>
-  <h1>From human demonstration to robot action</h1>
+<section class="slide" data-title="Pipeline">
+  <div class="tag">Aim 1 · Build</div>
+  <h1>Building the link from person to robot</h1>
   <div class="row" style="gap:44px">
     <div class="vsteps">
-      <div class="step on"><div class="n">1 · Teach</div><p>A person wears an exoskeleton; the robot copies it live.</p></div>
-      <div class="step"><div class="n">2 · Record</div><p>3 cameras + every joint, 30 times a second.</p></div>
-      <div class="step"><div class="n">3 · Learn</div><p>A neural network<span class="cite">[1]</span><span class="cite">[2]</span>: images → movements.</p></div>
-      <div class="step"><div class="n">4 · Act</div><p>The robot runs it, with safety checks.</p></div>
+      <div class="step"><div class="n">1 · Robot side</div><p style="font-size:33px">Read every motor and move the robot to any pose. One control link sends target poses and reads back joints, head and cameras.</p></div>
+      <div class="step"><div class="n">2 · Exoskeleton side</div><p style="font-size:33px">After calibration, it reads the operator's pose and sends it to the robot, which copies it live.</p></div>
+      <div class="step on"><p style="font-size:33px;color:var(--ink)"><b>→ Now we can record demonstrations, then train and let the robot act.</b></p></div>
     </div>
     <div style="flex:1;min-width:0"><iframe class="viz" data-src="viz/exo.html" data-poster="viz/posters/exo.png" style="width:100%;height:600px;border-radius:18px"></iframe>
   <div class="chips"><span>ROS 2 control<span class="cite">[3]</span></span><span>Exoskeleton protocol</span><span>100 Hz joint mapping</span><span>~4 ms network link</span><span>3 cameras · 30 fps</span><span>On-robot safety guard</span></div></div>
